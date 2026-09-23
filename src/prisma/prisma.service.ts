@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const SEED_ROOMS = [
-  { slug: 'sale', name: 'Sale', team: 'sale', agentName: 'SalesAgent' },
+  { slug: 'sale', name: 'Team Sale', team: 'sale', agentName: 'SalesAgent' },
   { slug: 'kho', name: 'Kho', team: 'kho', agentName: 'WarehouseAgent' },
 ];
 

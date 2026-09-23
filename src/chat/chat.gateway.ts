@@ -9,13 +9,14 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+import { corsOrigins } from '../cors-origins.js';
 import type { JwtPayload } from '../auth/jwt-payload.js';
 import { RoomsService } from '../rooms/rooms.service.js';
 import { ChatEvents } from './chat.events.js';
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+    origin: corsOrigins(),
     credentials: true,
   },
 })
