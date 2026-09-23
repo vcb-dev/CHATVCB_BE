@@ -27,7 +27,7 @@ export class AuthService {
         email,
         name: dto.name.trim(),
         team: this.normalizeTeam(dto.team),
-        passwordHash: await bcrypt.hash(dto.password, 12),
+        passwordHash: await bcrypt.hash(dto.password, 10),
       },
     });
     await this.prisma.syncTeamMemberships(user.id, user.team);
@@ -36,15 +36,35 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const email = this.resolveEmail(dto.email);
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        team: true,
+        isActive: true,
+        passwordHash: true,
+      },
+    });
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Tài khoản hoặc mật khẩu không đúng');
     }
     if (!user.isActive) {
       throw new UnauthorizedException('Tài khoản đã bị khóa');
     }
-    await this.prisma.syncTeamMemberships(user.id, user.team);
+    void this.rehashIfNeeded(user.id, dto.password, user.passwordHash);
     return this.issue(user);
+  }
+
+  private async rehashIfNeeded(id: string, password: string, hash: string) {
+    if (bcrypt.getRounds(hash) <= 10) {
+      return;
+    }
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash: await bcrypt.hash(password, 10) },
+    });
   }
 
   private resolveEmail(input: string) {

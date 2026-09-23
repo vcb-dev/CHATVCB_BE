@@ -15,17 +15,33 @@ export class MessagesService {
     private readonly agent: AgentClientService,
   ) {}
 
-  async list(roomId: string, userId: string) {
-    await this.rooms.getMemberRoom(roomId, userId);
-    return this.prisma.message.findMany({
+  async list(roomId: string, userId: string, team?: string) {
+    await this.rooms.getMemberRoom(roomId, userId, team);
+    const rows = await this.prisma.message.findMany({
       where: { roomId },
-      orderBy: { createdAt: 'asc' },
-      take: 200,
+      orderBy: { createdAt: 'desc' },
+      take: 80,
+      select: {
+        id: true,
+        roomId: true,
+        userId: true,
+        authorName: true,
+        role: true,
+        content: true,
+        createdAt: true,
+      },
     });
+    return rows.reverse();
   }
 
-  async createFromUser(roomId: string, userId: string, name: string, content: string) {
-    const room = await this.rooms.getMemberRoom(roomId, userId);
+  async createFromUser(
+    roomId: string,
+    userId: string,
+    name: string,
+    content: string,
+    team?: string,
+  ) {
+    const room = await this.rooms.getMemberRoom(roomId, userId, team);
     const message = await this.prisma.message.create({
       data: {
         roomId,
@@ -46,7 +62,12 @@ export class MessagesService {
       const history = await this.prisma.message.findMany({
         where: { roomId },
         orderBy: { createdAt: 'desc' },
-        take: 20,
+        take: 12,
+        select: {
+          role: true,
+          authorName: true,
+          content: true,
+        },
       });
       void this.replyWithAgent({
         roomId,
@@ -67,11 +88,10 @@ export class MessagesService {
   }
 
   async createFromAgent(roomId: string, content: string, agentName = 'Agent') {
-    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     const message = await this.prisma.message.create({
       data: {
         roomId,
-        authorName: room?.agentName ?? agentName,
+        authorName: agentName,
         role: 'agent',
         content,
       },

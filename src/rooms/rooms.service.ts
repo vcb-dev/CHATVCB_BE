@@ -5,14 +5,21 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export class RoomsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listForUser(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
+  async listForUser(userId: string, team?: string) {
+    const userTeam =
+      team ||
+      (
+        await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { team: true },
+        })
+      )?.team;
+    if (!userTeam) {
       return [];
     }
     return this.prisma.room.findMany({
       where: {
-        team: user.team,
+        team: userTeam,
         members: { some: { userId } },
       },
       orderBy: { name: 'asc' },
@@ -26,11 +33,7 @@ export class RoomsService {
     });
   }
 
-  async getMemberRoom(roomId: string, userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('Room not found');
-    }
+  async getMemberRoom(roomId: string, userId: string, team?: string) {
     const member = await this.prisma.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
       include: { room: true },
@@ -38,7 +41,15 @@ export class RoomsService {
     if (!member) {
       throw new NotFoundException('Room not found');
     }
-    if (member.room.team !== user.team) {
+    const userTeam =
+      team ||
+      (
+        await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { team: true },
+        })
+      )?.team;
+    if (!userTeam || member.room.team !== userTeam) {
       throw new ForbiddenException('Bạn không thuộc team của phòng này');
     }
     return member.room;

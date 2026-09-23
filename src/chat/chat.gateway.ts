@@ -68,7 +68,7 @@ export class ChatGateway
       return;
     }
     try {
-      await this.rooms.getMemberRoom(roomId, user.sub);
+      await this.rooms.getMemberRoom(roomId, user.sub, user.team);
     } catch {
       return;
     }

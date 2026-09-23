@@ -12,7 +12,7 @@ export class MessagesController {
 
   @Get()
   list(@Param('roomId') roomId: string, @CurrentUser() user: JwtPayload) {
-    return this.messages.list(roomId, user.sub);
+    return this.messages.list(roomId, user.sub, user.team);
   }
 
   @Post()
@@ -21,6 +21,12 @@ export class MessagesController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateMessageDto,
   ) {
-    return this.messages.createFromUser(roomId, user.sub, user.name, dto.content);
+    return this.messages.createFromUser(
+      roomId,
+      user.sub,
+      user.name,
+      dto.content,
+      user.team,
+    );
   }
 }

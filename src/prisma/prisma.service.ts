@@ -28,29 +28,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
   async onModuleInit() {
     await this.$connect();
-    try {
-      await this.$executeRawUnsafe('CREATE SCHEMA IF NOT EXISTS chatvcb');
-    } catch {
-      this.logger.warn('Skip CREATE SCHEMA on pooler');
-    }
     await this.seedRooms();
     await this.seedUsers();
   }
 
   private async seedRooms() {
-    const legacySales = await this.room.findUnique({ where: { slug: 'sales' } });
-    if (legacySales) {
-      await this.room.update({
-        where: { id: legacySales.id },
-        data: {
-          slug: 'sale',
-          name: 'Sale',
-          team: 'sale',
-          agentName: 'SalesAgent',
-        },
-      });
-    }
-
     for (const room of SEED_ROOMS) {
       await this.room.upsert({
         where: { slug: room.slug },
@@ -66,15 +48,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
   private async seedUsers() {
     for (const item of SEED_USERS) {
-      const passwordHash = await bcrypt.hash(item.password, 12);
-      const user = await this.user.upsert({
+      const existing = await this.user.findUnique({
         where: { email: item.email },
-        update: { name: item.name, team: item.team },
-        create: {
+        select: { id: true, team: true },
+      });
+      if (existing) {
+        if (existing.team !== item.team) {
+          await this.user.update({
+            where: { id: existing.id },
+            data: { name: item.name, team: item.team },
+          });
+        }
+        continue;
+      }
+      const user = await this.user.create({
+        data: {
           email: item.email,
           name: item.name,
           team: item.team,
-          passwordHash,
+          passwordHash: await bcrypt.hash(item.password, 10),
         },
       });
       await this.syncTeamMemberships(user.id, user.team);
@@ -83,14 +75,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
   }
 
   async syncTeamMemberships(userId: string, team: string) {
-    const rooms = await this.room.findMany({ where: { team } });
-    for (const room of rooms) {
-      await this.roomMember.upsert({
-        where: { roomId_userId: { roomId: room.id, userId } },
-        update: {},
-        create: { roomId: room.id, userId },
-      });
-    }
+    const rooms = await this.room.findMany({
+      where: { team },
+      select: { id: true },
+    });
+    await this.roomMember.createMany({
+      data: rooms.map((room) => ({ roomId: room.id, userId })),
+      skipDuplicates: true,
+    });
     await this.roomMember.deleteMany({
       where: {
         userId,

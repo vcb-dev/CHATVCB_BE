@@ -11,6 +11,6 @@ export class RoomsController {
 
   @Get()
   list(@CurrentUser() user: JwtPayload) {
-    return this.rooms.listForUser(user.sub);
+    return this.rooms.listForUser(user.sub, user.team);
   }
 }
