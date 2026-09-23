@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 
 const SEED_ROOMS = [
   { slug: 'sale', name: 'Team Sale', team: 'sale', agentName: 'SalesAgent' },
+  { slug: 'traffic', name: 'Team Traffic', team: 'traffic', agentName: 'TrafficAgent' },
   { slug: 'kho', name: 'Kho', team: 'kho', agentName: 'WarehouseAgent' },
 ];
 
@@ -19,6 +20,18 @@ const SEED_USERS = [
     name: 'Sale Hai',
     password: 'Password123',
     team: 'sale',
+  },
+  {
+    email: 'traffic1@chatvcb.vn',
+    name: 'Traffic Một',
+    password: 'Password123',
+    team: 'traffic',
+  },
+  {
+    email: 'traffic2@chatvcb.vn',
+    name: 'Traffic Hai',
+    password: 'Password123',
+    team: 'traffic',
   },
 ];
 
@@ -59,6 +72,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
             data: { name: item.name, team: item.team },
           });
         }
+        await this.syncTeamMemberships(existing.id, item.team);
         continue;
       }
       const user = await this.user.create({
@@ -71,7 +85,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       });
       await this.syncTeamMemberships(user.id, user.team);
     }
-    this.logger.log('Seeded team sale and test users sale1 / sale2');
+    this.logger.log('Seeded teams sale / traffic and test users');
   }
 
   async syncTeamMemberships(userId: string, team: string) {
