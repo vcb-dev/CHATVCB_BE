@@ -84,13 +84,14 @@ export class ChatGateway
 
   private emitPresence(roomId: string) {
     const room = this.server.sockets.adapter.rooms.get(`room:${roomId}`);
-    const seen = new Map<string, { id: string; name: string }>();
+    const seen = new Map<string, { id: string; name: string; handle: string }>();
     if (room) {
       for (const socketId of room) {
         const socket = this.server.sockets.sockets.get(socketId);
         const user = socket?.data?.user as JwtPayload | undefined;
         if (user?.sub) {
-          seen.set(user.sub, { id: user.sub, name: user.name });
+          const handle = user.email?.split('@')[0] ?? '';
+          seen.set(user.sub, { id: user.sub, name: user.name, handle });
         }
       }
     }
