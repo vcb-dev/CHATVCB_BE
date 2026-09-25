@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AgentClientService } from '../agent/agent.client.js';
+import { KnowledgeService } from '../agent/knowledge.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RoomsService } from '../rooms/rooms.service.js';
 import { ChatEvents } from './chat.events.js';
@@ -13,6 +14,7 @@ export class MessagesService {
     private readonly rooms: RoomsService,
     private readonly events: ChatEvents,
     private readonly agent: AgentClientService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   async list(roomId: string, userId: string, team?: string) {
@@ -59,16 +61,19 @@ export class MessagesService {
         roomId,
         agentName: room.agentName,
       });
-      const history = await this.prisma.message.findMany({
-        where: { roomId },
-        orderBy: { createdAt: 'desc' },
-        take: 12,
-        select: {
-          role: true,
-          authorName: true,
-          content: true,
-        },
-      });
+      const [history, knowledge] = await Promise.all([
+        this.prisma.message.findMany({
+          where: { roomId },
+          orderBy: { createdAt: 'desc' },
+          take: 12,
+          select: {
+            role: true,
+            authorName: true,
+            content: true,
+          },
+        }),
+        this.knowledge.listForInvoke(room.agentName),
+      ]);
       void this.replyWithAgent({
         roomId,
         messageId: message.id,
@@ -81,6 +86,7 @@ export class MessagesService {
           authorName: item.authorName,
           content: item.content,
         })),
+        knowledge,
       });
     }
 
@@ -108,6 +114,7 @@ export class MessagesService {
     agentName: string;
     content: string;
     history: { role: string; authorName: string; content: string }[];
+    knowledge: { title: string; content: string }[];
   }) {
     try {
       const content = await this.agent.invoke(job);

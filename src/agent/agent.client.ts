@@ -7,6 +7,11 @@ export type AgentHistoryItem = {
   content: string;
 };
 
+export type AgentKnowledgeItem = {
+  title: string;
+  content: string;
+};
+
 export type AgentJob = {
   roomId: string;
   messageId: string;
@@ -15,6 +20,7 @@ export type AgentJob = {
   agentName: string;
   content: string;
   history: AgentHistoryItem[];
+  knowledge: AgentKnowledgeItem[];
 };
 
 @Injectable()

@@ -58,3 +58,15 @@ model Message {
 
   @@index([roomId, createdAt])
 }
+
+model AgentKnowledge {
+  id         String   @id @default(uuid())
+  agentName  String
+  team       String
+  title      String
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([agentName, team])
+}

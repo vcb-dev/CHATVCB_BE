@@ -54,4 +54,20 @@ export class RoomsService {
     }
     return member.room;
   }
+
+  async listMembers(roomId: string, userId: string, team?: string) {
+    await this.getMemberRoom(roomId, userId, team);
+    const members = await this.prisma.roomMember.findMany({
+      where: { roomId },
+      select: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { user: { name: 'asc' } },
+    });
+    return members.map((item) => ({
+      id: item.user.id,
+      name: item.user.name,
+      handle: item.user.email.split('@')[0],
+    }));
+  }
 }
