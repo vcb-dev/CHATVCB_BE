@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import type { JwtPayload } from '../auth/jwt-payload.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
+import { PinMessageDto } from './dto/pin-message.dto.js';
 import { MessagesService } from './messages.service.js';
 
 @Controller('rooms/:roomId/messages')
@@ -25,8 +35,38 @@ export class MessagesController {
       roomId,
       user.sub,
       user.name,
-      dto.content,
+      dto.content ?? '',
       user.team,
+      dto.imageId,
+      dto.replyToId,
     );
+  }
+
+  @Patch(':messageId/pin')
+  pin(
+    @Param('roomId') roomId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: PinMessageDto,
+  ) {
+    return this.messages.pin(roomId, user.sub, messageId, body.pinned !== false, user.team);
+  }
+
+  @Post(':messageId/recall')
+  recall(
+    @Param('roomId') roomId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.messages.recall(roomId, user.sub, messageId, user.team);
+  }
+
+  @Delete(':messageId')
+  hide(
+    @Param('roomId') roomId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.messages.hide(roomId, user.sub, messageId, user.team);
   }
 }

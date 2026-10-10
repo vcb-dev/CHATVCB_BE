@@ -10,3 +10,17 @@ export function corsOrigins() {
     .filter(Boolean);
   return [...new Set([...DEFAULT_ORIGINS, ...extra])];
 }
+
+export function allowOrigin(origin?: string) {
+  if (!origin) {
+    return true;
+  }
+  return corsOrigins().includes(origin);
+}
+
+export function corsOriginDelegate(
+  origin: string | undefined,
+  callback: (err: Error | null, allow?: boolean) => void,
+) {
+  callback(null, allowOrigin(origin));
+}

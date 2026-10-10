@@ -22,6 +22,12 @@ const SEED_USERS = [
     team: 'sale',
   },
   {
+    email: 'sale3@chatvcb.vn',
+    name: 'Sale Ba',
+    password: 'Password123',
+    team: 'sale',
+  },
+  {
     email: 'traffic1@chatvcb.vn',
     name: 'Traffic Một',
     password: 'Password123',
