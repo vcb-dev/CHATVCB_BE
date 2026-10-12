@@ -14,10 +14,18 @@ model User {
   passwordHash String
   name         String
   team         String       @default("sale")
+  avatarUrl    String       @default("")
   isActive     Boolean      @default(true)
   createdAt    DateTime     @default(now())
   memberships  RoomMember[]
   messages     Message[]
+  images       ChatImage[]
+  hostedMeetings Meeting[]            @relation("MeetingHost")
+  meetingJoins   MeetingParticipant[]
+  mailAccounts   MailAccount[]
+  docs           Doc[]
+  docStars       DocStar[]
+  googleAccount  GoogleAccount?
 
   @@index([team])
 }
@@ -28,33 +36,168 @@ model Room {
   name      String
   team      String       @default("sale")
   agentName String       @default("Agent")
+  avatarUrl String       @default("")
   createdAt DateTime     @default(now())
   members   RoomMember[]
   messages  Message[]
+  images    ChatImage[]
 
   @@index([team])
 }
 
 model RoomMember {
-  id     String @id @default(uuid())
-  roomId String
-  userId String
-  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String    @id @default(uuid())
+  roomId            String
+  userId            String
+  nickname          String    @default("")
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  room              Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([roomId, userId])
 }
 
 model Message {
-  id         String   @id @default(uuid())
+  id         String         @id @default(uuid())
   roomId     String
   userId     String?
   authorName String
   role       String
   content    String
-  createdAt  DateTime @default(now())
-  room       Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  imageId    String?
+  replyToId  String?
+  pinnedAt   DateTime?
+  recalledAt DateTime?
+  createdAt  DateTime       @default(now())
+  room       Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  image      ChatImage?     @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  replyTo    Message?       @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies    Message[]      @relation("MessageReplies")
+  hides      MessageHide[]
 
   @@index([roomId, createdAt])
+  @@index([roomId, pinnedAt])
+}
+
+model MessageHide {
+  id        String  @id @default(uuid())
+  messageId String
+  userId    String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+model ChatImage {
+  id         String    @id @default(uuid())
+  roomId     String
+  userId     String
+  mimeType   String
+  filename   String
+  storedName String
+  url        String    @default("")
+  createdAt  DateTime  @default(now())
+  room       Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   Message[]
+
+  @@index([roomId, createdAt])
+}
+
+model AgentKnowledge {
+  id         String   @id @default(uuid())
+  agentName  String
+  team       String
+  title      String
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([agentName, team])
+}
+
+model Meeting {
+  id          String               @id @default(uuid())
+  code        String               @unique
+  title       String
+  team        String
+  hostId      String
+  notes       String               @default("")
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime             @default(now())
+  host        User                 @relation("MeetingHost", fields: [hostId], references: [id], onDelete: Cascade)
+  participants MeetingParticipant[]
+
+  @@index([team, createdAt])
+  @@index([team, scheduledAt])
+}
+
+model MeetingParticipant {
+  id        String    @id @default(uuid())
+  meetingId String
+  userId    String
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime?
+  meeting   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+}
+
+model MailAccount {
+  id          String   @id @default(uuid())
+  userId      String
+  email       String
+  provider    String   @default("imap")
+  imapHost    String
+  imapPort    Int      @default(993)
+  secret      String
+  displayName String   @default("")
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+model Doc {
+  id        String    @id @default(uuid())
+  team      String
+  ownerId   String
+  title     String    @default("Tài liệu không tiêu đề")
+  kind      String    @default("doc")
+  content   String    @default("")
+  folder    String    @default("Docs của tôi")
+  googleId  String    @default("")
+  googleUrl String    @default("")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  stars     DocStar[]
+
+  @@index([team, updatedAt])
+  @@index([ownerId])
+}
+
+model DocStar {
+  userId String
+  docId  String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doc    Doc  @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@id([userId, docId])
+  @@index([docId])
+}
+
+model GoogleAccount {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  email     String
+  secret    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

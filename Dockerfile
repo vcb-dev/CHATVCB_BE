@@ -30,6 +30,8 @@ COPY --from=builder /usr/src/app/prisma ./prisma/
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
 
+RUN mkdir -p /usr/src/app/uploads
+
 EXPOSE 3010
 
 CMD ["node", "dist/main.js"]

@@ -22,6 +22,12 @@ const SEED_USERS = [
     team: 'sale',
   },
   {
+    email: 'sale3@chatvcb.vn',
+    name: 'Sale Ba',
+    password: 'Password123',
+    team: 'sale',
+  },
+  {
     email: 'traffic1@chatvcb.vn',
     name: 'Traffic Một',
     password: 'Password123',
@@ -43,6 +49,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     await this.$connect();
     await this.seedRooms();
     await this.seedUsers();
+    await this.seedTrafficBrain();
   }
 
   private async seedRooms() {
@@ -86,6 +93,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       await this.syncTeamMemberships(user.id, user.team);
     }
     this.logger.log('Seeded teams sale / traffic and test users');
+  }
+
+  private async seedTrafficBrain() {
+    const count = await this.agentKnowledge.count({
+      where: { agentName: 'TrafficAgent' },
+    });
+    if (count > 0) {
+      return;
+    }
+    await this.agentKnowledge.create({
+      data: {
+        agentName: 'TrafficAgent',
+        team: 'traffic',
+        title: 'Quy tắc não Traffic',
+        content:
+          'Não riêng team Traffic. Chỉ dùng dữ liệu ads/campaign/kênh/KPI được đẩy vào đây. Chưa có campaign thì nói chưa được nạp.',
+      },
+    });
   }
 
   async syncTeamMemberships(userId: string, team: string) {

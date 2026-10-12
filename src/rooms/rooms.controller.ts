@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import type { JwtPayload } from '../auth/jwt-payload.js';
@@ -12,5 +12,10 @@ export class RoomsController {
   @Get()
   list(@CurrentUser() user: JwtPayload) {
     return this.rooms.listForUser(user.sub, user.team);
+  }
+
+  @Get(':roomId/members')
+  members(@Param('roomId') roomId: string, @CurrentUser() user: JwtPayload) {
+    return this.rooms.listMembers(roomId, user.sub, user.team);
   }
 }
