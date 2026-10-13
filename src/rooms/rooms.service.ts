@@ -1,11 +1,34 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service.js";
 
 const LINK = /https?:\/\/[^\s<>"']+/gi;
 
 @Injectable()
 export class RoomsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private lastMessagePreview(message: {
+    content: string;
+    recalledAt: Date | null;
+    imageId: string | null;
+  }): string {
+    if (message.recalledAt) {
+      return "Tin nhắn đã được thu hồi";
+    }
+    if (message.imageId) {
+      return "Hình ảnh";
+    }
+    const text = message.content.trim();
+    if (text.length <= 120) {
+      return text;
+    }
+    return `${text.slice(0, 120)}…`;
+  }
 
   async listForUser(userId: string, team?: string) {
     const userTeam =
@@ -19,12 +42,11 @@ export class RoomsService {
     if (!userTeam) {
       return [];
     }
-    return this.prisma.room.findMany({
+    const rooms = await this.prisma.room.findMany({
       where: {
         team: userTeam,
         members: { some: { userId } },
       },
-      orderBy: { name: 'asc' },
       select: {
         id: true,
         slug: true,
@@ -32,8 +54,42 @@ export class RoomsService {
         team: true,
         agentName: true,
         avatarUrl: true,
+        createdAt: true,
+        messages: {
+          where: { hides: { none: { userId } } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            content: true,
+            recalledAt: true,
+            imageId: true,
+            createdAt: true,
+          },
+        },
       },
     });
+
+    return rooms
+      .map((room) => {
+        const last = room.messages[0];
+        const updatedAt = last?.createdAt ?? room.createdAt;
+        return {
+          id: room.id,
+          slug: room.slug,
+          name: room.name,
+          title: room.name,
+          team: room.team,
+          agentName: room.agentName,
+          avatarUrl: room.avatarUrl || "",
+          type: "group",
+          lastMessagePreview: last ? this.lastMessagePreview(last) : "",
+          updatedAt: updatedAt.toISOString(),
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
   }
 
   async getMemberRoom(roomId: string, userId: string, team?: string) {
@@ -42,7 +98,7 @@ export class RoomsService {
       include: { room: true },
     });
     if (!member) {
-      throw new NotFoundException('Room not found');
+      throw new NotFoundException("Room not found");
     }
     const userTeam =
       team ||
@@ -53,7 +109,7 @@ export class RoomsService {
         })
       )?.team;
     if (!userTeam || member.room.team !== userTeam) {
-      throw new ForbiddenException('Bạn không thuộc team của phòng này');
+      throw new ForbiddenException("Bạn không thuộc team của phòng này");
     }
     return member.room;
   }
@@ -72,7 +128,7 @@ export class RoomsService {
       name: room.name,
       team: room.team,
       agentName: room.agentName,
-      avatarUrl: room.avatarUrl || '',
+      avatarUrl: room.avatarUrl || "",
     };
   }
 
@@ -82,17 +138,19 @@ export class RoomsService {
       where: { roomId },
       select: {
         nickname: true,
-        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        user: {
+          select: { id: true, name: true, email: true, avatarUrl: true },
+        },
       },
-      orderBy: { user: { name: 'asc' } },
+      orderBy: { user: { name: "asc" } },
     });
     return members.map((item) => ({
       id: item.user.id,
       name: item.user.name,
-      nickname: item.nickname || '',
+      nickname: item.nickname || "",
       displayName: item.nickname || item.user.name,
-      handle: item.user.email.split('@')[0],
-      avatarUrl: item.user.avatarUrl || '',
+      handle: item.user.email.split("@")[0],
+      avatarUrl: item.user.avatarUrl || "",
     }));
   }
 
@@ -104,11 +162,16 @@ export class RoomsService {
     return member?.nickname || member?.user.name || fallback;
   }
 
-  async updateName(roomId: string, userId: string, name: string, team?: string) {
+  async updateName(
+    roomId: string,
+    userId: string,
+    name: string,
+    team?: string,
+  ) {
     await this.getMemberRoom(roomId, userId, team);
     const trimmed = name.trim();
     if (!trimmed) {
-      throw new BadRequestException('Tên nhóm không được trống.');
+      throw new BadRequestException("Tên nhóm không được trống.");
     }
     const room = await this.prisma.room.update({
       where: { id: roomId },
@@ -117,7 +180,12 @@ export class RoomsService {
     return this.toPublicRoom(room);
   }
 
-  async updateAvatar(roomId: string, userId: string, url: string, team?: string) {
+  async updateAvatar(
+    roomId: string,
+    userId: string,
+    url: string,
+    team?: string,
+  ) {
     await this.getMemberRoom(roomId, userId, team);
     const room = await this.prisma.room.update({
       where: { id: roomId },
@@ -138,7 +206,7 @@ export class RoomsService {
       where: { roomId_userId: { roomId, userId: targetId } },
     });
     if (!member) {
-      throw new NotFoundException('Không tìm thấy thành viên.');
+      throw new NotFoundException("Không tìm thấy thành viên.");
     }
     await this.prisma.roomMember.update({
       where: { roomId_userId: { roomId, userId: targetId } },
@@ -154,9 +222,9 @@ export class RoomsService {
         roomId,
         recalledAt: null,
         hides: { none: { userId } },
-        content: { contains: 'http' },
+        content: { contains: "http" },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 80,
       select: {
         id: true,
@@ -165,7 +233,12 @@ export class RoomsService {
         createdAt: true,
       },
     });
-    const links: { url: string; messageId: string; authorName: string; createdAt: Date }[] = [];
+    const links: {
+      url: string;
+      messageId: string;
+      authorName: string;
+      createdAt: Date;
+    }[] = [];
     for (const row of rows) {
       const found = row.content.match(LINK) ?? [];
       for (const url of found) {
