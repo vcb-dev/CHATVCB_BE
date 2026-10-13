@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { RoomKind } from "@prisma/client";
+import { randomUUID } from "crypto";
 import { PrismaService } from "../prisma/prisma.service.js";
+
+function buildDmKey(a: string, b: string): string {
+  return [a, b].sort().join("_");
+}
 
 const LINK = /https?:\/\/[^\s<>"']+/gi;
 
@@ -29,32 +35,29 @@ export class RoomsService {
     }
     return `${text.slice(0, 120)}…`;
   }
-
-  async listForUser(userId: string, team?: string) {
-    const userTeam =
-      team ||
-      (
-        await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { team: true },
-        })
-      )?.team;
-    if (!userTeam) {
-      return [];
-    }
+  // Lấy danh sách phòng chat cho người dùng
+  async listForUser(userId: string, _team?: string) {
     const rooms = await this.prisma.room.findMany({
       where: {
-        team: userTeam,
         members: { some: { userId } },
       },
       select: {
         id: true,
         slug: true,
         name: true,
+        kind: true,
+        createdById: true,
         team: true,
         agentName: true,
         avatarUrl: true,
         createdAt: true,
+        members: {
+          select: {
+            userId: true,
+            nickname: true,
+            user: { select: { id: true, name: true } },
+          },
+        },
         messages: {
           where: { hides: { none: { userId } } },
           orderBy: { createdAt: "desc" },
@@ -70,46 +73,68 @@ export class RoomsService {
     });
 
     return rooms
-      .map((room) => {
-        const last = room.messages[0];
-        const updatedAt = last?.createdAt ?? room.createdAt;
-        return {
-          id: room.id,
-          slug: room.slug,
-          name: room.name,
-          title: room.name,
-          team: room.team,
-          agentName: room.agentName,
-          avatarUrl: room.avatarUrl || "",
-          type: "group",
-          lastMessagePreview: last ? this.lastMessagePreview(last) : "",
-          updatedAt: updatedAt.toISOString(),
-        };
-      })
+      .map((room) => this.toConversationItem(room, userId))
       .sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
   }
+  // Chuyển đổi phòng chat thành đối tượng trao đổi
+  private toConversationItem(
+    room: {
+      id: string;
+      name: string;
+      kind: RoomKind;
+      createdById: string | null;
+      avatarUrl: string;
+      createdAt: Date;
+      members: {
+        userId: string;
+        nickname: string;
+        user: { id: string; name: string };
+      }[];
+      messages: {
+        content: string;
+        recalledAt: Date | null;
+        imageId: string | null;
+        createdAt: Date;
+      }[];
+    },
+    viewerId: string,
+  ) {
+    const last = room.messages[0];
+    const updatedAt = last?.createdAt ?? room.createdAt;
+    const isDirect = room.kind === RoomKind.direct;
 
-  async getMemberRoom(roomId: string, userId: string, team?: string) {
+    let title = room.name;
+    if (isDirect) {
+      const peer = room.members.find((m) => m.userId !== viewerId);
+      title = peer?.nickname || peer?.user.name || "Chat cá nhân";
+    }
+
+    const type = isDirect ? "direct" : "group";
+
+    return {
+      id: room.id,
+      title,
+      name: room.name,
+      type,
+      kind: room.kind,
+      avatarUrl: room.avatarUrl || "",
+      lastMessagePreview: last ? this.lastMessagePreview(last) : "",
+      updatedAt: updatedAt.toISOString(),
+      canDelete: room.kind === RoomKind.group && room.createdById === viewerId,
+      createdById: room.createdById,
+    };
+  }
+
+  async getMemberRoom(roomId: string, userId: string, _team?: string) {
     const member = await this.prisma.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
       include: { room: true },
     });
     if (!member) {
       throw new NotFoundException("Room not found");
-    }
-    const userTeam =
-      team ||
-      (
-        await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { team: true },
-        })
-      )?.team;
-    if (!userTeam || member.room.team !== userTeam) {
-      throw new ForbiddenException("Bạn không thuộc team của phòng này");
     }
     return member.room;
   }
@@ -251,5 +276,179 @@ export class RoomsService {
       }
     }
     return links.slice(0, 80);
+  }
+  // Tìm hoặc tạo phòng chat cá nhân
+  async findOrCreateDirect(actorId: string, targetId: string) {
+    if (actorId === targetId) {
+      throw new BadRequestException("Không thể chat với chính mình.");
+    }
+    // Tìm người dùng đích
+    const target = await this.prisma.user.findFirst({
+      where: { id: targetId, isActive: true },
+      select: { id: true },
+    });
+    if (!target) {
+      throw new NotFoundException("Không tìm thấy người dùng.");
+    }
+    // Tạo key phòng chat cá nhân
+    const key = buildDmKey(actorId, targetId);
+    // Tìm phòng chat cá nhân
+    const existing = await this.prisma.room.findUnique({
+      where: { dmKey: key },
+      include: {
+        members: {
+          select: {
+            userId: true,
+            nickname: true,
+            user: { select: { id: true, name: true } },
+          },
+        },
+        messages: {
+          where: { hides: { none: { userId: actorId } } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            content: true,
+            recalledAt: true,
+            imageId: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+    // Nếu phòng chat cá nhân tồn tại, trả về đối tượng trao đổi
+    if (existing) {
+      return this.toConversationItem(
+        {
+          ...existing,
+          kind: existing.kind,
+          createdById: existing.createdById,
+          createdAt: existing.createdAt,
+          avatarUrl: existing.avatarUrl,
+          name: existing.name,
+        },
+        actorId,
+      );
+    }
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorId },
+      select: { team: true },
+    });
+
+    // Tạo phòng chat cá nhân
+    const room = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.room.create({
+        data: {
+          slug: `dm-${randomUUID()}`,
+          name: "",
+          kind: RoomKind.direct,
+          dmKey: key,
+          team: actor?.team ?? "sale",
+          agentName: "",
+          members: {
+            create: [{ userId: actorId }, { userId: targetId }],
+          },
+        },
+      });
+      return created;
+    });
+
+    return this.toConversationItem(
+      {
+        id: room.id,
+        name: room.name,
+        kind: room.kind,
+        createdById: room.createdById,
+        avatarUrl: room.avatarUrl,
+        createdAt: room.createdAt,
+        members: await this.prisma.roomMember.findMany({
+          where: { roomId: room.id },
+          select: {
+            userId: true,
+            nickname: true,
+            user: { select: { id: true, name: true } },
+          },
+        }),
+        messages: [],
+      },
+      actorId,
+    );
+  }
+  // Tạo nhóm chat
+  async createGroup(actorId: string, name: string, memberIds: string[]) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new BadRequestException("Tên nhóm không được trống.");
+    }
+
+    const uniqueIds = [...new Set(memberIds.filter((id) => id !== actorId))];
+    if (uniqueIds.length === 0) {
+      throw new BadRequestException("Cần ít nhất một thành viên khác.");
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: uniqueIds }, isActive: true },
+      select: { id: true },
+    });
+    if (users.length !== uniqueIds.length) {
+      throw new BadRequestException("Một số thành viên không hợp lệ.");
+    }
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorId },
+      select: { team: true },
+    });
+
+    const room = await this.prisma.room.create({
+      data: {
+        slug: `group-${randomUUID()}`,
+        name: trimmed,
+        kind: RoomKind.group,
+        createdById: actorId,
+        team: actor?.team ?? "sale",
+        agentName: "",
+        members: {
+          create: [
+            { userId: actorId },
+            ...uniqueIds.map((userId) => ({ userId })),
+          ],
+        },
+      },
+    });
+    // Trả về đối tượng trao đổi
+    return this.toConversationItem(
+      {
+        id: room.id,
+        name: room.name,
+        kind: room.kind,
+        createdById: room.createdById,
+        avatarUrl: room.avatarUrl,
+        createdAt: room.createdAt,
+        members: await this.prisma.roomMember.findMany({
+          where: { roomId: room.id },
+          select: {
+            userId: true,
+            nickname: true,
+            user: { select: { id: true, name: true } },
+          },
+        }),
+        messages: [],
+      },
+      actorId,
+    );
+  }
+  // Xóa nhóm chat
+  async deleteGroup(roomId: string, actorId: string) {
+    // Lấy phòng chat
+    const room = await this.getMemberRoom(roomId, actorId);
+    // Nếu phòng chat không phải là nhóm, throw lỗi
+    if (room.kind !== RoomKind.group) {
+      throw new BadRequestException("Chỉ xóa được nhóm chat.");
+    }
+    if (room.createdById !== actorId) {
+      throw new ForbiddenException("Chỉ người tạo nhóm mới được xóa.");
+    }
+    await this.prisma.room.delete({ where: { id: roomId } });
   }
 }

@@ -27,22 +27,34 @@ model User {
   docStars       DocStar[]
   googleAccount  GoogleAccount?
 
+  createdRooms Room[] @relation("RoomCreator")
+
   @@index([team])
 }
 
+enum RoomKind {
+  direct
+  group
+}
+
 model Room {
-  id        String       @id @default(uuid())
-  slug      String       @unique
-  name      String
-  team      String       @default("sale")
-  agentName String       @default("Agent")
-  avatarUrl String       @default("")
-  createdAt DateTime     @default(now())
-  members   RoomMember[]
-  messages  Message[]
-  images    ChatImage[]
+  id          String       @id @default(uuid())
+  slug        String       @unique
+  name        String
+  kind        RoomKind     @default(group)
+  dmKey       String?      @unique
+  createdById String?
+  team        String       @default("sale")
+  agentName   String       @default("")
+  avatarUrl   String       @default("")
+  createdAt   DateTime     @default(now())
+  createdBy   User?        @relation("RoomCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  members     RoomMember[]
+  messages    Message[]
+  images      ChatImage[]
 
   @@index([team])
+  @@index([kind])
 }
 
 model RoomMember {

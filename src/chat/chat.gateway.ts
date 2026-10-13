@@ -78,11 +78,7 @@ export class ChatGateway
     } catch {
       return;
     }
-    for (const joined of client.rooms) {
-      if (joined.startsWith('room:')) {
-        void client.leave(joined);
-      }
-    }
+    // Cho phép join nhiều phòng (inbox realtime) — không leave phòng cũ.
     client.data.roomId = roomId;
     void client.join(`room:${roomId}`);
     this.emitPresence(roomId);
