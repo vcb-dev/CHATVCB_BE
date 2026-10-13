@@ -55,6 +55,8 @@ export class RoomsService {
           select: {
             userId: true,
             nickname: true,
+            lastReadMessageId: true,
+            lastReadAt: true,
             user: { select: { id: true, name: true } },
           },
         },
@@ -72,12 +74,38 @@ export class RoomsService {
       },
     });
 
-    return rooms
-      .map((room) => this.toConversationItem(room, userId))
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
+    const items = await Promise.all(
+      rooms.map(async (room) => {
+        const viewerMember = room.members.find((m) => m.userId === userId);
+        const unreadCount = await this.unreadCountForRoom(
+          room.id,
+          userId,
+          viewerMember?.lastReadAt ?? null,
+        );
+        return this.toConversationItem(room, userId, unreadCount);
+      }),
+    );
+
+    return items.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  }
+
+  private async unreadCountForRoom(
+    roomId: string,
+    viewerId: string,
+    lastReadAt: Date | null,
+  ): Promise<number> {
+    return this.prisma.message.count({
+      where: {
+        roomId,
+        userId: { not: viewerId },
+        recalledAt: null,
+        hides: { none: { userId: viewerId } },
+        ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
+      },
+    });
   }
   // Chuyển đổi phòng chat thành đối tượng trao đổi
   private toConversationItem(
@@ -91,6 +119,8 @@ export class RoomsService {
       members: {
         userId: string;
         nickname: string;
+        lastReadMessageId: string | null;
+        lastReadAt: Date | null;
         user: { id: string; name: string };
       }[];
       messages: {
@@ -101,6 +131,7 @@ export class RoomsService {
       }[];
     },
     viewerId: string,
+    unreadCount = 0,
   ) {
     const last = room.messages[0];
     const updatedAt = last?.createdAt ?? room.createdAt;
@@ -125,6 +156,7 @@ export class RoomsService {
       updatedAt: updatedAt.toISOString(),
       canDelete: room.kind === RoomKind.group && room.createdById === viewerId,
       createdById: room.createdById,
+      unreadCount,
     };
   }
 
@@ -300,6 +332,8 @@ export class RoomsService {
           select: {
             userId: true,
             nickname: true,
+            lastReadMessageId: true,
+            lastReadAt: true,
             user: { select: { id: true, name: true } },
           },
         },
@@ -318,6 +352,12 @@ export class RoomsService {
     });
     // Nếu phòng chat cá nhân tồn tại, trả về đối tượng trao đổi
     if (existing) {
+      const viewerMember = existing.members.find((m) => m.userId === actorId);
+      const unreadCount = await this.unreadCountForRoom(
+        existing.id,
+        actorId,
+        viewerMember?.lastReadAt ?? null,
+      );
       return this.toConversationItem(
         {
           ...existing,
@@ -328,6 +368,7 @@ export class RoomsService {
           name: existing.name,
         },
         actorId,
+        unreadCount,
       );
     }
 
@@ -367,12 +408,15 @@ export class RoomsService {
           select: {
             userId: true,
             nickname: true,
+            lastReadMessageId: true,
+            lastReadAt: true,
             user: { select: { id: true, name: true } },
           },
         }),
         messages: [],
       },
       actorId,
+      0,
     );
   }
   // Tạo nhóm chat
@@ -430,12 +474,15 @@ export class RoomsService {
           select: {
             userId: true,
             nickname: true,
+            lastReadMessageId: true,
+            lastReadAt: true,
             user: { select: { id: true, name: true } },
           },
         }),
         messages: [],
       },
       actorId,
+      0,
     );
   }
   // Xóa nhóm chat
