@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/current-user.decorator.js";
@@ -23,8 +24,18 @@ export class RoomsController {
   constructor(private readonly rooms: RoomsService) {}
 
   @Get()
-  list(@CurrentUser() user: JwtPayload) {
-    return this.rooms.listForUser(actorId(user), user.team);
+  list(
+    @CurrentUser() user: JwtPayload,
+    @Query("limit") limitRaw?: string,
+    @Query("cursor") cursor?: string,
+  ) {
+    const parsed = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
+    const limit =
+      parsed != null && !Number.isNaN(parsed) ? parsed : undefined;
+    return this.rooms.listForUser(actorId(user), user.team, {
+      limit,
+      cursor,
+    });
   }
 
   @Post("direct")

@@ -39,11 +39,23 @@ export class RoomsService {
     }
     return `${text.slice(0, 120)}…`;
   }
-  // Lấy danh sách phòng chat cho người dùng
-  async listForUser(userId: string, _team?: string) {
+  // Lấy danh sách phòng chat cho người dùng (chỉ phòng đã có tin nhắn).
+  async listForUser(
+    userId: string,
+    _team?: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ) {
+    const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+    const cursorMs = opts.cursor ? Date.parse(opts.cursor) : Number.NaN;
+
     const rooms = await this.prisma.room.findMany({
       where: {
         members: { some: { userId } },
+        messages: {
+          some: {
+            hides: { none: { userId } },
+          },
+        },
       },
       select: {
         id: true,
@@ -91,10 +103,29 @@ export class RoomsService {
       }),
     );
 
-    return items.sort(
+    const sorted = items.sort(
       (a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
+
+    const afterCursor =
+      !Number.isNaN(cursorMs) && opts.cursor
+        ? sorted.filter(
+            (item) => new Date(item.updatedAt).getTime() < cursorMs,
+          )
+        : sorted;
+
+    const page = afterCursor.slice(0, limit);
+    const hasMore = afterCursor.length > limit;
+    const nextCursor = hasMore ? page[page.length - 1]?.updatedAt ?? null : null;
+
+    return {
+      data: page,
+      meta: {
+        hasMore,
+        nextCursor,
+      },
+    };
   }
 
   private async unreadCountForRoom(
