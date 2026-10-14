@@ -43,6 +43,28 @@ export function uploadImageBuffer(buffer: Buffer, publicId: string, mimeType: st
   });
 }
 
+export function uploadRawBuffer(buffer: Buffer, publicId: string) {
+  ensureConfig();
+  return new Promise<{ url: string; publicId: string }>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: cloudinaryFolder(),
+        public_id: publicId,
+        overwrite: true,
+        resource_type: 'raw',
+      },
+      (error, result) => {
+        if (error || !result?.secure_url) {
+          reject(error ?? new Error('Cloudinary không trả URL'));
+          return;
+        }
+        resolve({ url: result.secure_url, publicId: result.public_id });
+      },
+    );
+    stream.end(buffer);
+  });
+}
+
 export function uploadAvatarBuffer(buffer: Buffer, publicId: string) {
   ensureConfig();
   return new Promise<{ url: string; publicId: string }>((resolve, reject) => {

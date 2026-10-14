@@ -7,6 +7,7 @@ import { ChatEvents } from './chat.events.js';
 import { ChatGateway } from './chat.gateway.js';
 import { FilesController } from './files.controller.js';
 import { GifsController } from './gifs.controller.js';
+import { AttachmentsService } from './attachments.service.js';
 import { ImagesService } from './images.service.js';
 import { MessagesController } from './messages.controller.js';
 import { MessagesService } from './messages.service.js';
@@ -15,7 +16,7 @@ import { RoomMediaController } from './room-media.controller.js';
 @Module({
   imports: [AuthModule, RoomsModule, MeetingsModule, AgentModule],
   controllers: [MessagesController, RoomMediaController, FilesController, GifsController],
-  providers: [MessagesService, ImagesService, ChatGateway, ChatEvents],
+  providers: [MessagesService, ImagesService, AttachmentsService, ChatGateway, ChatEvents],
   exports: [MessagesService],
 })
 export class ChatModule {}

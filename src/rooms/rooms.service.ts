@@ -22,12 +22,16 @@ export class RoomsService {
     content: string;
     recalledAt: Date | null;
     imageId: string | null;
+    fileId: string | null;
   }): string {
     if (message.recalledAt) {
       return "Tin nhắn đã được thu hồi";
     }
     if (message.imageId) {
       return "Hình ảnh";
+    }
+    if (message.fileId) {
+      return "Tệp đính kèm";
     }
     const text = message.content.trim();
     if (text.length <= 120) {
@@ -68,6 +72,7 @@ export class RoomsService {
             content: true,
             recalledAt: true,
             imageId: true,
+            fileId: true,
             createdAt: true,
           },
         },
@@ -127,6 +132,7 @@ export class RoomsService {
         content: string;
         recalledAt: Date | null;
         imageId: string | null;
+        fileId: string | null;
         createdAt: Date;
       }[];
     },
@@ -345,6 +351,7 @@ export class RoomsService {
             content: true,
             recalledAt: true,
             imageId: true,
+            fileId: true,
             createdAt: true,
           },
         },

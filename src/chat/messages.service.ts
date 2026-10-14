@@ -4,6 +4,7 @@ import { KnowledgeService } from '../agent/knowledge.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RoomsService } from '../rooms/rooms.service.js';
 import { ChatEvents } from './chat.events.js';
+import { AttachmentsService } from './attachments.service.js';
 import { ImagesService } from './images.service.js';
 import { imageUrl } from './upload-dir.js';
 
@@ -17,11 +18,18 @@ type MessageRow = {
   role: string;
   content: string;
   imageId: string | null;
+  fileId: string | null;
   replyToId?: string | null;
   pinnedAt?: Date | null;
   recalledAt?: Date | null;
   createdAt: Date;
   image?: { url: string } | null;
+  file?: {
+    url: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+  } | null;
   replyTo?: {
     id: string;
     userId: string | null;
@@ -40,11 +48,20 @@ const MESSAGE_SELECT = {
   role: true,
   content: true,
   imageId: true,
+  fileId: true,
   replyToId: true,
   pinnedAt: true,
   recalledAt: true,
   createdAt: true,
   image: { select: { url: true } },
+  file: {
+    select: {
+      url: true,
+      filename: true,
+      mimeType: true,
+      sizeBytes: true,
+    },
+  },
   replyTo: {
     select: {
       id: true,
@@ -66,6 +83,7 @@ export class MessagesService {
     private readonly agent: AgentClientService,
     private readonly knowledge: KnowledgeService,
     private readonly images: ImagesService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   async list(roomId: string, userId: string, team?: string) {
@@ -105,14 +123,18 @@ export class MessagesService {
     team?: string,
     imageId?: string,
     replyToId?: string,
+    fileId?: string,
   ) {
     const text = content.trim();
-    if (!text && !imageId) {
+    if (!text && !imageId && !fileId) {
       throw new BadRequestException('Tin nhắn trống.');
     }
     const room = await this.rooms.getMemberRoom(roomId, userId, team);
     if (imageId) {
       await this.images.assertInRoom(imageId, roomId);
+    }
+    if (fileId) {
+      await this.attachments.assertInRoom(fileId, roomId);
     }
     if (replyToId) {
       const parent = await this.prisma.message.findFirst({
@@ -132,6 +154,7 @@ export class MessagesService {
         role: 'user',
         content: text,
         imageId: imageId || null,
+        fileId: fileId || null,
         replyToId: replyToId || null,
       },
       select: MESSAGE_SELECT,
@@ -352,6 +375,11 @@ export class MessagesService {
           : message.imageId
             ? imageUrl(message.imageId)
             : null,
+      fileId: recalled ? null : message.fileId,
+      fileUrl: recalled ? null : message.file?.url || null,
+      fileName: recalled ? null : message.file?.filename || null,
+      fileMimeType: recalled ? null : message.file?.mimeType || null,
+      fileSizeBytes: recalled ? null : message.file?.sizeBytes ?? null,
       replyToId: message.replyToId ?? null,
       replyTo: message.replyTo
         ? {

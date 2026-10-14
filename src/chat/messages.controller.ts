@@ -39,6 +39,7 @@ export class MessagesController {
       user.team,
       dto.imageId,
       dto.replyToId,
+      dto.fileId,
     );
   }
 

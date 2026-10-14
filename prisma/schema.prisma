@@ -20,6 +20,7 @@ model User {
   memberships  RoomMember[]
   messages     Message[]
   images       ChatImage[]
+  attachments  ChatAttachment[]
   hostedMeetings Meeting[]            @relation("MeetingHost")
   meetingJoins   MeetingParticipant[]
   mailAccounts   MailAccount[]
@@ -52,6 +53,7 @@ model Room {
   members     RoomMember[]
   messages    Message[]
   images      ChatImage[]
+  attachments ChatAttachment[]
 
   @@index([team])
   @@index([kind])
@@ -78,6 +80,7 @@ model Message {
   role       String
   content    String
   imageId    String?
+  fileId     String?
   replyToId  String?
   pinnedAt   DateTime?
   recalledAt DateTime?
@@ -85,6 +88,7 @@ model Message {
   room       Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   image      ChatImage?     @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  file       ChatAttachment? @relation(fields: [fileId], references: [id], onDelete: SetNull)
   replyTo    Message?       @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies    Message[]      @relation("MessageReplies")
   hides      MessageHide[]
@@ -108,6 +112,23 @@ model ChatImage {
   userId     String
   mimeType   String
   filename   String
+  storedName String
+  url        String    @default("")
+  createdAt  DateTime  @default(now())
+  room       Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   Message[]
+
+  @@index([roomId, createdAt])
+}
+
+model ChatAttachment {
+  id         String    @id @default(uuid())
+  roomId     String
+  userId     String
+  mimeType   String
+  filename   String
+  sizeBytes  Int
   storedName String
   url        String    @default("")
   createdAt  DateTime  @default(now())
