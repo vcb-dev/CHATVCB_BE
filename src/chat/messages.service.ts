@@ -334,7 +334,7 @@ export class MessagesService {
       },
     });
     return new Map(
-      members.map((item) => [item.userId, item.nickname || item.user.name]),
+      members.map((item) => [item.userId, this.rooms.memberDisplayName(item)]),
     );
   }
 
@@ -350,7 +350,7 @@ export class MessagesService {
     });
     return rows.map((item) => ({
       userId: item.user.id,
-      name: item.nickname || item.user.name,
+      name: this.rooms.memberDisplayName(item),
       lastReadMessageId: item.lastReadMessageId,
       lastReadAt: item.lastReadAt,
     }));

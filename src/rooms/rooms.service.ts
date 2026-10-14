@@ -12,11 +12,60 @@ function buildDmKey(a: string, b: string): string {
   return [a, b].sort().join("_");
 }
 
+function parseDmKey(key: string): [string, string] | null {
+  const parts = key.split("_");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return null;
+  }
+  return [parts[0], parts[1]];
+}
+
 const LINK = /https?:\/\/[^\s<>"']+/gi;
 
 @Injectable()
 export class RoomsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private directRoomHasPair(
+    members: { userId: string }[],
+    a: string,
+    b: string,
+  ): boolean {
+    if (members.length !== 2) {
+      return false;
+    }
+    const ids = new Set(members.map((m) => m.userId));
+    return ids.has(a) && ids.has(b);
+  }
+
+  /** DM bị thêm nhầm thành viên → giữ đúng 2 user theo dmKey. */
+  private async repairDirectRoomMembers(
+    roomId: string,
+    dmKey: string | null,
+  ): Promise<void> {
+    const pair = dmKey ? parseDmKey(dmKey) : null;
+    if (!pair) {
+      return;
+    }
+    await this.prisma.roomMember.deleteMany({
+      where: {
+        roomId,
+        userId: { notIn: pair },
+      },
+    });
+  }
+
+  /** Tên hiển thị: ưu tiên tên tài khoản, nickname phòng chỉ là fallback. */
+  memberDisplayName(member: {
+    nickname: string;
+    user: { name: string };
+  }): string {
+    const account = member.user.name?.trim() ?? "";
+    if (account) {
+      return account;
+    }
+    return member.nickname?.trim() ?? "";
+  }
 
   private lastMessagePreview(message: {
     content: string;
@@ -39,7 +88,7 @@ export class RoomsService {
     }
     return `${text.slice(0, 120)}…`;
   }
-  // Lấy danh sách phòng chat cho người dùng (chỉ phòng đã có tin nhắn).
+  // DM: chỉ phòng đã có tin. Nhóm: thành viên là đủ (kể cả chưa có tin).
   async listForUser(
     userId: string,
     _team?: string,
@@ -51,11 +100,16 @@ export class RoomsService {
     const rooms = await this.prisma.room.findMany({
       where: {
         members: { some: { userId } },
-        messages: {
-          some: {
-            hides: { none: { userId } },
+        OR: [
+          { kind: RoomKind.group },
+          {
+            messages: {
+              some: {
+                hides: { none: { userId } },
+              },
+            },
           },
-        },
+        ],
       },
       select: {
         id: true,
@@ -174,10 +228,15 @@ export class RoomsService {
     const updatedAt = last?.createdAt ?? room.createdAt;
     const isDirect = room.kind === RoomKind.direct;
 
-    let title = room.name;
+    let title = room.name.trim();
+    let peerUserId: string | null = null;
     if (isDirect) {
       const peer = room.members.find((m) => m.userId !== viewerId);
-      title = peer?.nickname || peer?.user.name || "Chat cá nhân";
+      peerUserId = peer?.userId ?? null;
+      title = peer ? this.memberDisplayName(peer) : "Chat cá nhân";
+      if (!title) {
+        title = "Chat cá nhân";
+      }
     }
 
     const type = isDirect ? "direct" : "group";
@@ -194,18 +253,38 @@ export class RoomsService {
       canDelete: room.kind === RoomKind.group && room.createdById === viewerId,
       createdById: room.createdById,
       unreadCount,
+      peerUserId,
     };
   }
 
   async getMemberRoom(roomId: string, userId: string, _team?: string) {
     const member = await this.prisma.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
-      include: { room: true },
+      include: {
+        room: {
+          include: {
+            members: { select: { userId: true } },
+          },
+        },
+      },
     });
     if (!member) {
       throw new NotFoundException("Room not found");
     }
-    return member.room;
+    const room = member.room;
+    if (room.kind === RoomKind.direct) {
+      const count = room.members.length;
+      if (count !== 2) {
+        await this.repairDirectRoomMembers(room.id, room.dmKey);
+        const fixed = await this.prisma.roomMember.count({ where: { roomId } });
+        if (fixed !== 2) {
+          throw new BadRequestException(
+            "Phòng chat cá nhân không hợp lệ. Hãy tạo cuộc trò chuyện mới.",
+          );
+        }
+      }
+    }
+    return room;
   }
 
   toPublicRoom(room: {
@@ -233,7 +312,13 @@ export class RoomsService {
       select: {
         nickname: true,
         user: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            team: true,
+            avatarUrl: true,
+          },
         },
       },
       orderBy: { user: { name: "asc" } },
@@ -241,8 +326,10 @@ export class RoomsService {
     return members.map((item) => ({
       id: item.user.id,
       name: item.user.name,
+      email: item.user.email,
+      team: item.user.team,
       nickname: item.nickname || "",
-      displayName: item.nickname || item.user.name,
+      displayName: this.memberDisplayName(item),
       handle: item.user.email.split("@")[0],
       avatarUrl: item.user.avatarUrl || "",
     }));
@@ -253,7 +340,13 @@ export class RoomsService {
       where: { roomId_userId: { roomId, userId } },
       select: { nickname: true, user: { select: { name: true } } },
     });
-    return member?.nickname || member?.user.name || fallback;
+    if (member) {
+      const label = this.memberDisplayName(member);
+      if (label) {
+        return label;
+      }
+    }
+    return fallback.trim() || "Unknown";
   }
 
   async updateName(
@@ -359,36 +452,83 @@ export class RoomsService {
     if (!target) {
       throw new NotFoundException("Không tìm thấy người dùng.");
     }
-    // Tạo key phòng chat cá nhân
     const key = buildDmKey(actorId, targetId);
-    // Tìm phòng chat cá nhân
-    const existing = await this.prisma.room.findUnique({
-      where: { dmKey: key },
-      include: {
-        members: {
-          select: {
-            userId: true,
-            nickname: true,
-            lastReadMessageId: true,
-            lastReadAt: true,
-            user: { select: { id: true, name: true } },
-          },
-        },
-        messages: {
-          where: { hides: { none: { userId: actorId } } },
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: {
-            content: true,
-            recalledAt: true,
-            imageId: true,
-            fileId: true,
-            createdAt: true,
-          },
+    const directInclude = {
+      members: {
+        select: {
+          userId: true,
+          nickname: true,
+          lastReadMessageId: true,
+          lastReadAt: true,
+          user: { select: { id: true, name: true } },
         },
       },
+      messages: {
+        where: { hides: { none: { userId: actorId } } },
+        orderBy: { createdAt: "desc" as const },
+        take: 1,
+        select: {
+          content: true,
+          recalledAt: true,
+          imageId: true,
+          fileId: true,
+          createdAt: true,
+        },
+      },
+    };
+
+    let existing = await this.prisma.room.findUnique({
+      where: { dmKey: key },
+      include: directInclude,
     });
-    // Nếu phòng chat cá nhân tồn tại, trả về đối tượng trao đổi
+
+    if (
+      existing &&
+      !this.directRoomHasPair(existing.members, actorId, targetId)
+    ) {
+      await this.repairDirectRoomMembers(existing.id, existing.dmKey);
+      existing = await this.prisma.room.findUnique({
+        where: { id: existing.id },
+        include: directInclude,
+      });
+      if (
+        !existing ||
+        !this.directRoomHasPair(existing.members, actorId, targetId)
+      ) {
+        const brokenId = existing?.id;
+        if (brokenId) {
+          await this.prisma.room.update({
+            where: { id: brokenId },
+            data: { dmKey: null },
+          });
+        }
+        existing = null;
+      }
+    }
+
+    if (!existing) {
+      const legacy = await this.prisma.room.findMany({
+        where: {
+          kind: RoomKind.direct,
+          AND: [
+            { members: { some: { userId: actorId } } },
+            { members: { some: { userId: targetId } } },
+          ],
+        },
+        include: directInclude,
+      });
+      existing =
+        legacy.find((room) =>
+          this.directRoomHasPair(room.members, actorId, targetId),
+        ) ?? null;
+      if (existing && !existing.dmKey) {
+        await this.prisma.room.update({
+          where: { id: existing.id },
+          data: { dmKey: key },
+        });
+      }
+    }
+
     if (existing) {
       const viewerMember = existing.members.find((m) => m.userId === actorId);
       const unreadCount = await this.unreadCountForRoom(
