@@ -127,7 +127,7 @@ export class RoomsService {
             nickname: true,
             lastReadMessageId: true,
             lastReadAt: true,
-            user: { select: { id: true, name: true } },
+            user: { select: { id: true, name: true, avatarUrl: true } },
           },
         },
         messages: {
@@ -211,7 +211,7 @@ export class RoomsService {
         nickname: string;
         lastReadMessageId: string | null;
         lastReadAt: Date | null;
-        user: { id: string; name: string };
+        user: { id: string; name: string; avatarUrl: string };
       }[];
       messages: {
         content: string;
@@ -230,12 +230,17 @@ export class RoomsService {
 
     let title = room.name.trim();
     let peerUserId: string | null = null;
+    let avatarUrl = room.avatarUrl?.trim() || "";
     if (isDirect) {
       const peer = room.members.find((m) => m.userId !== viewerId);
       peerUserId = peer?.userId ?? null;
       title = peer ? this.memberDisplayName(peer) : "Chat cá nhân";
       if (!title) {
         title = "Chat cá nhân";
+      }
+      const peerAvatar = peer?.user.avatarUrl?.trim() || "";
+      if (peerAvatar) {
+        avatarUrl = peerAvatar;
       }
     }
 
@@ -247,7 +252,7 @@ export class RoomsService {
       name: room.name,
       type,
       kind: room.kind,
-      avatarUrl: room.avatarUrl || "",
+      avatarUrl,
       lastMessagePreview: last ? this.lastMessagePreview(last) : "",
       updatedAt: updatedAt.toISOString(),
       canDelete: room.kind === RoomKind.group && room.createdById === viewerId,
@@ -460,7 +465,7 @@ export class RoomsService {
           nickname: true,
           lastReadMessageId: true,
           lastReadAt: true,
-          user: { select: { id: true, name: true } },
+          user: { select: { id: true, name: true, avatarUrl: true } },
         },
       },
       messages: {
@@ -588,7 +593,7 @@ export class RoomsService {
             nickname: true,
             lastReadMessageId: true,
             lastReadAt: true,
-            user: { select: { id: true, name: true } },
+            user: { select: { id: true, name: true, avatarUrl: true } },
           },
         }),
         messages: [],
@@ -654,7 +659,7 @@ export class RoomsService {
             nickname: true,
             lastReadMessageId: true,
             lastReadAt: true,
-            user: { select: { id: true, name: true } },
+            user: { select: { id: true, name: true, avatarUrl: true } },
           },
         }),
         messages: [],

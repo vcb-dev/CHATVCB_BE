@@ -38,6 +38,7 @@ type MessageRow = {
     recalledAt: Date | null;
     image: { url: string } | null;
   } | null;
+  user?: { avatarUrl: string } | null;
 };
 
 const MESSAGE_SELECT = {
@@ -72,6 +73,7 @@ const MESSAGE_SELECT = {
       image: { select: { url: true } },
     },
   },
+  user: { select: { avatarUrl: true } },
 } as const;
 
 @Injectable()
@@ -365,6 +367,7 @@ export class MessagesService {
       roomId: message.roomId,
       userId: message.userId,
       authorName,
+      authorAvatarUrl: message.user?.avatarUrl ?? '',
       role: message.role,
       content: recalled ? '' : message.content,
       imageId: recalled ? null : message.imageId,
