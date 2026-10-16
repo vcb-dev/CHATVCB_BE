@@ -668,6 +668,56 @@ export class RoomsService {
       0,
     );
   }
+
+  private async requireGroupCreator(roomId: string, actorId: string) {
+    const room = await this.getMemberRoom(roomId, actorId);
+    if (room.kind !== RoomKind.group) {
+      throw new BadRequestException("Chỉ thao tác được trên nhóm chat.");
+    }
+    if (room.createdById !== actorId) {
+      throw new ForbiddenException("Chỉ người tạo nhóm mới được thực hiện.");
+    }
+    return room;
+  }
+
+  async addMember(roomId: string, actorId: string, userId: string) {
+    await this.requireGroupCreator(roomId, actorId);
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, isActive: true },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new BadRequestException("Thành viên không hợp lệ.");
+    }
+    const existing = await this.prisma.roomMember.findUnique({
+      where: { roomId_userId: { roomId, userId } },
+    });
+    if (existing) {
+      throw new BadRequestException("Thành viên đã có trong nhóm.");
+    }
+    await this.prisma.roomMember.create({
+      data: { roomId, userId },
+    });
+    return this.listMembers(roomId, actorId);
+  }
+
+  async removeMember(roomId: string, actorId: string, userId: string) {
+    const room = await this.requireGroupCreator(roomId, actorId);
+    if (userId === room.createdById) {
+      throw new BadRequestException("Không thể xóa người tạo nhóm.");
+    }
+    const existing = await this.prisma.roomMember.findUnique({
+      where: { roomId_userId: { roomId, userId } },
+    });
+    if (!existing) {
+      throw new NotFoundException("Không tìm thấy thành viên.");
+    }
+    await this.prisma.roomMember.delete({
+      where: { roomId_userId: { roomId, userId } },
+    });
+    return this.listMembers(roomId, actorId);
+  }
+
   // Xóa nhóm chat
   async deleteGroup(roomId: string, actorId: string) {
     // Lấy phòng chat
