@@ -1,12 +1,17 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AgentClientService } from '../agent/agent.client.js';
-import { KnowledgeService } from '../agent/knowledge.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { RoomsService } from '../rooms/rooms.service.js';
-import { ChatEvents } from './chat.events.js';
-import { AttachmentsService } from './attachments.service.js';
-import { ImagesService } from './images.service.js';
-import { imageUrl } from './upload-dir.js';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { AgentClientService } from "../agent/agent.client.js";
+import { KnowledgeService } from "../agent/knowledge.service.js";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { RoomsService } from "../rooms/rooms.service.js";
+import { AttachmentsService } from "./attachments.service.js";
+import { ChatEvents } from "./chat.events.js";
+import { ImagesService } from "./images.service.js";
+import { imageUrl } from "./upload-dir.js";
 
 const AGENT_MENTION = /@agent\b/i;
 
@@ -88,16 +93,40 @@ export class MessagesService {
     private readonly attachments: AttachmentsService,
   ) {}
 
-  async list(roomId: string, userId: string, team?: string) {
+  async list(
+    roomId: string,
+    userId: string,
+    team?: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ) {
     await this.rooms.getMemberRoom(roomId, userId, team);
+
+    const limit = Math.min(Math.max(opts.limit ?? 80, 1), 100);
+    const cursorMs = opts.cursor ? Date.parse(opts.cursor) : Number.NaN;
+    const hasCursor = !Number.isNaN(cursorMs) && Boolean(opts.cursor);
+
     const rows = await this.prisma.message.findMany({
-      where: { roomId, hides: { none: { userId } } },
-      orderBy: { createdAt: 'desc' },
-      take: 80,
+      where: {
+        roomId,
+        hides: { none: { userId } },
+        ...(hasCursor ? { createdAt: { lt: new Date(cursorMs) } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
       select: MESSAGE_SELECT,
     });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore
+      ? (page[page.length - 1]?.createdAt ?? null)
+      : null;
     const names = await this.displayNames(roomId);
-    return rows.reverse().map((row) => this.toPublic(row, names));
+
+    return {
+      data: [...page].reverse().map((row) => this.toPublic(row, names)),
+      meta: { hasMore, nextCursor },
+    };
   }
 
   async listPinned(roomId: string, userId: string, team?: string) {
@@ -109,7 +138,7 @@ export class MessagesService {
         recalledAt: null,
         hides: { none: { userId } },
       },
-      orderBy: { pinnedAt: 'desc' },
+      orderBy: { pinnedAt: "desc" },
       take: 40,
       select: MESSAGE_SELECT,
     });
@@ -129,7 +158,7 @@ export class MessagesService {
   ) {
     const text = content.trim();
     if (!text && !imageId && !fileId) {
-      throw new BadRequestException('Tin nhắn trống.');
+      throw new BadRequestException("Tin nhắn trống.");
     }
     const room = await this.rooms.getMemberRoom(roomId, userId, team);
     if (imageId) {
@@ -144,7 +173,7 @@ export class MessagesService {
         select: { id: true },
       });
       if (!parent) {
-        throw new BadRequestException('Không tìm thấy tin nhắn để trả lời.');
+        throw new BadRequestException("Không tìm thấy tin nhắn để trả lời.");
       }
     }
     const authorName = await this.rooms.displayName(roomId, userId, name);
@@ -153,7 +182,7 @@ export class MessagesService {
         roomId,
         userId,
         authorName,
-        role: 'user',
+        role: "user",
         content: text,
         imageId: imageId || null,
         fileId: fileId || null,
@@ -164,17 +193,17 @@ export class MessagesService {
 
     const names = await this.displayNames(roomId);
     const payload = this.toPublic(message, names);
-    this.events.emitToRoom(roomId, 'message', payload);
+    this.events.emitToRoom(roomId, "message", payload);
 
     if (this.shouldInvokeAgent(text, room.agentName)) {
-      this.events.emitToRoom(roomId, 'agent.pending', {
+      this.events.emitToRoom(roomId, "agent.pending", {
         roomId,
         agentName: room.agentName,
       });
       const [history, knowledge] = await Promise.all([
         this.prisma.message.findMany({
           where: { roomId, recalledAt: null },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           take: 12,
           select: {
             role: true,
@@ -190,7 +219,7 @@ export class MessagesService {
         userId,
         userName: authorName,
         agentName: room.agentName,
-        content: text || '[ảnh]',
+        content: text || "[ảnh]",
         history: history.reverse().map((item) => ({
           role: item.role,
           authorName: item.authorName,
@@ -203,30 +232,36 @@ export class MessagesService {
     return payload;
   }
 
-  async createFromAgent(roomId: string, content: string, agentName = 'Agent') {
+  async createFromAgent(roomId: string, content: string, agentName = "Agent") {
     const message = await this.prisma.message.create({
       data: {
         roomId,
         authorName: agentName,
-        role: 'agent',
+        role: "agent",
         content,
       },
       select: MESSAGE_SELECT,
     });
     const names = await this.displayNames(roomId);
     const payload = this.toPublic(message, names);
-    this.events.emitToRoom(roomId, 'message', payload);
+    this.events.emitToRoom(roomId, "message", payload);
     return payload;
   }
 
-  async pin(roomId: string, userId: string, messageId: string, pinned: boolean, team?: string) {
+  async pin(
+    roomId: string,
+    userId: string,
+    messageId: string,
+    pinned: boolean,
+    team?: string,
+  ) {
     await this.rooms.getMemberRoom(roomId, userId, team);
     const existing = await this.prisma.message.findFirst({
       where: { id: messageId, roomId },
       select: { id: true, recalledAt: true },
     });
     if (!existing || existing.recalledAt) {
-      throw new NotFoundException('Không tìm thấy tin nhắn.');
+      throw new NotFoundException("Không tìm thấy tin nhắn.");
     }
     const message = await this.prisma.message.update({
       where: { id: messageId },
@@ -235,26 +270,31 @@ export class MessagesService {
     });
     const names = await this.displayNames(roomId);
     const payload = this.toPublic(message, names);
-    this.events.emitToRoom(roomId, 'message.updated', payload);
+    this.events.emitToRoom(roomId, "message.updated", payload);
     return payload;
   }
 
-  async recall(roomId: string, userId: string, messageId: string, team?: string) {
+  async recall(
+    roomId: string,
+    userId: string,
+    messageId: string,
+    team?: string,
+  ) {
     await this.rooms.getMemberRoom(roomId, userId, team);
     const existing = await this.prisma.message.findFirst({
       where: { id: messageId, roomId },
     });
     if (!existing) {
-      throw new NotFoundException('Không tìm thấy tin nhắn.');
+      throw new NotFoundException("Không tìm thấy tin nhắn.");
     }
     if (existing.userId !== userId) {
-      throw new ForbiddenException('Chỉ thu hồi được tin của bạn.');
+      throw new ForbiddenException("Chỉ thu hồi được tin của bạn.");
     }
     const message = await this.prisma.message.update({
       where: { id: messageId },
       data: {
         recalledAt: new Date(),
-        content: '',
+        content: "",
         imageId: null,
         pinnedAt: null,
       },
@@ -262,7 +302,7 @@ export class MessagesService {
     });
     const names = await this.displayNames(roomId);
     const payload = this.toPublic(message, names);
-    this.events.emitToRoom(roomId, 'message.updated', payload);
+    this.events.emitToRoom(roomId, "message.updated", payload);
     return payload;
   }
 
@@ -273,7 +313,7 @@ export class MessagesService {
       select: { id: true },
     });
     if (!existing) {
-      throw new NotFoundException('Không tìm thấy tin nhắn.');
+      throw new NotFoundException("Không tìm thấy tin nhắn.");
     }
     await this.prisma.messageHide.upsert({
       where: { messageId_userId: { messageId, userId } },
@@ -288,14 +328,19 @@ export class MessagesService {
     return this.loadReads(roomId);
   }
 
-  async markRead(roomId: string, userId: string, messageId: string, team?: string) {
+  async markRead(
+    roomId: string,
+    userId: string,
+    messageId: string,
+    team?: string,
+  ) {
     await this.rooms.getMemberRoom(roomId, userId, team);
     const message = await this.prisma.message.findFirst({
       where: { id: messageId, roomId },
       select: { id: true, createdAt: true },
     });
     if (!message) {
-      throw new NotFoundException('Không tìm thấy tin nhắn.');
+      throw new NotFoundException("Không tìm thấy tin nhắn.");
     }
     const member = await this.prisma.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
@@ -308,7 +353,7 @@ export class MessagesService {
       });
       if (current && current.createdAt > message.createdAt) {
         const reads = await this.loadReads(roomId);
-        this.events.emitToRoom(roomId, 'room.reads', reads);
+        this.events.emitToRoom(roomId, "room.reads", reads);
         return reads;
       }
     }
@@ -322,7 +367,7 @@ export class MessagesService {
       });
     }
     const reads = await this.loadReads(roomId);
-    this.events.emitToRoom(roomId, 'room.reads', reads);
+    this.events.emitToRoom(roomId, "room.reads", reads);
     return reads;
   }
 
@@ -367,9 +412,9 @@ export class MessagesService {
       roomId: message.roomId,
       userId: message.userId,
       authorName,
-      authorAvatarUrl: message.user?.avatarUrl ?? '',
+      authorAvatarUrl: message.user?.avatarUrl ?? "",
       role: message.role,
-      content: recalled ? '' : message.content,
+      content: recalled ? "" : message.content,
       imageId: recalled ? null : message.imageId,
       imageUrl: recalled
         ? null
@@ -382,7 +427,7 @@ export class MessagesService {
       fileUrl: recalled ? null : message.file?.url || null,
       fileName: recalled ? null : message.file?.filename || null,
       fileMimeType: recalled ? null : message.file?.mimeType || null,
-      fileSizeBytes: recalled ? null : message.file?.sizeBytes ?? null,
+      fileSizeBytes: recalled ? null : (message.file?.sizeBytes ?? null),
       replyToId: message.replyToId ?? null,
       replyTo: message.replyTo
         ? {
@@ -390,8 +435,10 @@ export class MessagesService {
             authorName:
               (message.replyTo.userId && names?.get(message.replyTo.userId)) ||
               message.replyTo.authorName,
-            content: message.replyTo.recalledAt ? '' : message.replyTo.content,
-            imageUrl: message.replyTo.recalledAt ? null : message.replyTo.image?.url || null,
+            content: message.replyTo.recalledAt ? "" : message.replyTo.content,
+            imageUrl: message.replyTo.recalledAt
+              ? null
+              : message.replyTo.image?.url || null,
             recalled: Boolean(message.replyTo.recalledAt),
           }
         : null,
@@ -417,7 +464,7 @@ export class MessagesService {
     } catch (error) {
       await this.createFromAgent(
         job.roomId,
-        `Không gọi được AI: ${error instanceof Error ? error.message : 'unknown'}`,
+        `Không gọi được AI: ${error instanceof Error ? error.message : "unknown"}`,
         job.agentName,
       );
     }
@@ -430,7 +477,7 @@ export class MessagesService {
     if (AGENT_MENTION.test(content)) {
       return true;
     }
-    const named = new RegExp(`@${agentName}\\b`, 'i');
+    const named = new RegExp(`@${agentName}\\b`, "i");
     return named.test(content);
   }
 }
