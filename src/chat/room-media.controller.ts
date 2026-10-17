@@ -109,6 +109,11 @@ export class RoomMediaController {
     return this.images.upload(roomId, user.sub, file, user.team);
   }
 
+  @Get('files')
+  listFiles(@Param('roomId') roomId: string, @CurrentUser() user: JwtPayload) {
+    return this.attachments.list(roomId, user.sub, user.team);
+  }
+
   @Post('files')
   @UseInterceptors(
     FileInterceptor('file', {
