@@ -414,7 +414,7 @@ export class MessagesService {
       });
       if (current && current.createdAt > message.createdAt) {
         const reads = await this.loadReads(roomId);
-        this.events.emitToRoom(roomId, "room.reads", reads);
+        this.events.emitToRoom(roomId, "room.reads", { roomId, reads });
         return reads;
       }
     }
@@ -428,7 +428,7 @@ export class MessagesService {
       });
     }
     const reads = await this.loadReads(roomId);
-    this.events.emitToRoom(roomId, "room.reads", reads);
+    this.events.emitToRoom(roomId, "room.reads", { roomId, reads });
     return reads;
   }
 
@@ -453,12 +453,13 @@ export class MessagesService {
         lastReadMessageId: true,
         lastReadAt: true,
         nickname: true,
-        user: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true, avatarUrl: true } },
       },
     });
     return rows.map((item) => ({
       userId: item.user.id,
       name: this.rooms.memberDisplayName(item),
+      avatarUrl: item.user.avatarUrl ?? "",
       lastReadMessageId: item.lastReadMessageId,
       lastReadAt: item.lastReadAt,
     }));
