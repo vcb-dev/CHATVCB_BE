@@ -27,6 +27,7 @@ model User {
   docs           Doc[]
   docStars       DocStar[]
   googleAccount  GoogleAccount?
+  reactions      MessageReaction[]
 
   createdRooms Room[] @relation("RoomCreator")
 
@@ -92,9 +93,23 @@ model Message {
   replyTo    Message?       @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies    Message[]      @relation("MessageReplies")
   hides      MessageHide[]
+  reactions  MessageReaction[]
 
   @@index([roomId, createdAt])
   @@index([roomId, pinnedAt])
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
 }
 
 model MessageHide {

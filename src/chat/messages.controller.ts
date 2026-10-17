@@ -14,6 +14,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
 import type { JwtPayload } from "../auth/jwt-payload.js";
 import { CreateMessageDto } from "./dto/create-message.dto.js";
 import { PinMessageDto } from "./dto/pin-message.dto.js";
+import { ReactMessageDto } from "./dto/react-message.dto.js";
 import { MessagesService } from "./messages.service.js";
 
 @Controller("rooms/:roomId/messages")
@@ -63,6 +64,22 @@ export class MessagesController {
       user.sub,
       messageId,
       body.pinned !== false,
+      user.team,
+    );
+  }
+
+  @Post(":messageId/reactions")
+  react(
+    @Param("roomId") roomId: string,
+    @Param("messageId") messageId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: ReactMessageDto,
+  ) {
+    return this.messages.react(
+      roomId,
+      user.sub,
+      messageId,
+      body.emoji,
       user.team,
     );
   }

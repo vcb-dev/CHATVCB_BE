@@ -10,6 +10,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { RoomsService } from "../rooms/rooms.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { ChatEvents } from "./chat.events.js";
+import { REACTION_EMOJIS } from "./dto/react-message.dto.js";
 import { ImagesService } from "./images.service.js";
 import { imageUrl } from "./upload-dir.js";
 
@@ -44,6 +45,11 @@ type MessageRow = {
     image: { url: string } | null;
   } | null;
   user?: { avatarUrl: string } | null;
+  reactions?: {
+    emoji: string;
+    userId: string;
+    user?: { name: string; avatarUrl: string } | null;
+  }[];
 };
 
 const MESSAGE_SELECT = {
@@ -79,6 +85,13 @@ const MESSAGE_SELECT = {
     },
   },
   user: { select: { avatarUrl: true } },
+  reactions: {
+    select: {
+      emoji: true,
+      userId: true,
+      user: { select: { name: true, avatarUrl: true } },
+    },
+  },
 } as const;
 
 @Injectable()
@@ -273,6 +286,54 @@ export class MessagesService {
     this.events.emitToRoom(roomId, "message.updated", payload);
     return payload;
   }
+  /**
+   * Thêm hoặc xóa reaction cho tin nhắn
+   */
+  async react(
+    roomId: string,
+    userId: string,
+    messageId: string,
+    emoji: string,
+    team?: string,
+  ) {
+    await this.rooms.getMemberRoom(roomId, userId, team);
+    if (!(REACTION_EMOJIS as readonly string[]).includes(emoji)) {
+      throw new BadRequestException("Emoji không hợp lệ.");
+    }
+    const existing = await this.prisma.message.findFirst({
+      where: { id: messageId, roomId },
+      select: { id: true, recalledAt: true },
+    });
+    if (!existing || existing.recalledAt) {
+      throw new NotFoundException("Không tìm thấy tin nhắn.");
+    }
+    const current = await this.prisma.messageReaction.findUnique({
+      where: { messageId_userId: { messageId, userId } },
+      select: { emoji: true },
+    });
+    if (current?.emoji === emoji) {
+      await this.prisma.messageReaction.delete({
+        where: { messageId_userId: { messageId, userId } },
+      });
+    } else if (current) {
+      await this.prisma.messageReaction.update({
+        where: { messageId_userId: { messageId, userId } },
+        data: { emoji },
+      });
+    } else {
+      await this.prisma.messageReaction.create({
+        data: { messageId, userId, emoji },
+      });
+    }
+    const message = await this.prisma.message.findFirstOrThrow({
+      where: { id: messageId },
+      select: MESSAGE_SELECT,
+    });
+    const names = await this.displayNames(roomId);
+    const payload = this.toPublic(message, names);
+    this.events.emitToRoom(roomId, "message.updated", payload);
+    return payload;
+  }
 
   async recall(
     roomId: string,
@@ -444,8 +505,47 @@ export class MessagesService {
         : null,
       pinned: Boolean(message.pinnedAt),
       recalled,
+      reactions: recalled
+        ? []
+        : this.summarizeReactions(message.reactions, names),
       createdAt: message.createdAt,
     };
+  }
+  /**
+   * Tổng hợp các reactions của tin nhắn
+   */
+  private summarizeReactions(
+    rows?: {
+      emoji: string;
+      userId: string;
+      user?: { name: string; avatarUrl: string } | null;
+    }[],
+    names?: Map<string, string>,
+  ): {
+    emoji: string;
+    count: number;
+    userIds: string[];
+    users: { id: string; name: string; avatarUrl: string }[];
+  }[] {
+    const grouped = new Map<
+      string,
+      { id: string; name: string; avatarUrl: string }[]
+    >();
+    for (const row of rows ?? []) {
+      const users = grouped.get(row.emoji) ?? [];
+      users.push({
+        id: row.userId,
+        name: names?.get(row.userId) || row.user?.name || "Thành viên",
+        avatarUrl: row.user?.avatarUrl ?? "",
+      });
+      grouped.set(row.emoji, users);
+    }
+    return [...grouped.entries()].map(([emoji, users]) => ({
+      emoji,
+      count: users.length,
+      userIds: users.map((user) => user.id),
+      users,
+    }));
   }
 
   private async replyWithAgent(job: {
