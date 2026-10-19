@@ -38,7 +38,8 @@ export class UsersService {
             }
           : {}),
       },
-      take: Math.min(limit, 50),
+      // ponytail: nội bộ — list all when not searching; cap search hits
+      ...(term ? { take: Math.min(limit, 50) } : {}),
       orderBy: { name: "asc" },
       select: {
         id: true,
