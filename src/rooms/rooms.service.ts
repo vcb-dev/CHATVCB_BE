@@ -360,7 +360,10 @@ export class RoomsService {
     name: string,
     team?: string,
   ) {
-    await this.getMemberRoom(roomId, userId, team);
+    const current = await this.getMemberRoom(roomId, userId, team);
+    if (current.kind !== RoomKind.group) {
+      throw new BadRequestException("Chỉ nhóm mới đổi được tên.");
+    }
     const trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException("Tên nhóm không được trống.");
@@ -378,7 +381,10 @@ export class RoomsService {
     url: string,
     team?: string,
   ) {
-    await this.getMemberRoom(roomId, userId, team);
+    const current = await this.getMemberRoom(roomId, userId, team);
+    if (current.kind !== RoomKind.group) {
+      throw new BadRequestException("Chỉ nhóm mới đổi được ảnh.");
+    }
     const room = await this.prisma.room.update({
       where: { id: roomId },
       data: { avatarUrl: url },
