@@ -608,6 +608,126 @@ export class RoomsService {
       0,
     );
   }
+  async search(viewerId: string, q?: string) {
+    const term = q?.trim() ?? "";
+    if (!term) {
+      return { users: [], rooms: [], messages: [] };
+    }
+
+    const [users, rooms, messages] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          id: { not: viewerId },
+          OR: [
+            { name: { contains: term, mode: "insensitive" } },
+            { email: { contains: term, mode: "insensitive" } },
+          ],
+        },
+        take: 10,
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          team: true,
+          avatarUrl: true,
+        },
+      }),
+      this.prisma.room.findMany({
+        where: {
+          kind: RoomKind.group,
+          members: { some: { userId: viewerId } },
+          name: { contains: term, mode: "insensitive" },
+        },
+        take: 10,
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          avatarUrl: true,
+          createdById: true,
+        },
+      }),
+      this.prisma.message.findMany({
+        where: {
+          recalledAt: null,
+          content: { contains: term, mode: "insensitive" },
+          hides: { none: { userId: viewerId } },
+          room: { members: { some: { userId: viewerId } } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          roomId: true,
+          content: true,
+          authorName: true,
+          createdAt: true,
+          room: {
+            select: {
+              name: true,
+              kind: true,
+              avatarUrl: true,
+              createdById: true,
+              members: {
+                select: {
+                  userId: true,
+                  nickname: true,
+                  user: { select: { id: true, name: true, avatarUrl: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      users,
+      rooms: rooms.map((room) => ({
+        id: room.id,
+        title: room.name,
+        name: room.name,
+        type: "group" as const,
+        kind: room.kind,
+        avatarUrl: room.avatarUrl || "",
+        lastMessagePreview: "",
+        canDelete: room.createdById === viewerId,
+        unreadCount: 0,
+        peerUserId: null,
+      })),
+      messages: messages.map((row) => {
+        const room = row.room;
+        let roomTitle = room.name.trim();
+        let roomAvatarUrl = room.avatarUrl || "";
+        let peerUserId: string | null = null;
+        if (room.kind === RoomKind.direct) {
+          const peer = room.members.find((m) => m.userId !== viewerId);
+          peerUserId = peer?.userId ?? null;
+          roomTitle = peer ? this.memberDisplayName(peer) : "Chat cá nhân";
+          const peerAvatar = peer?.user.avatarUrl?.trim() || "";
+          if (peerAvatar) {
+            roomAvatarUrl = peerAvatar;
+          }
+        }
+        return {
+          id: row.id,
+          roomId: row.roomId,
+          content: row.content,
+          authorName: row.authorName,
+          createdAt: row.createdAt,
+          roomTitle,
+          roomAvatarUrl,
+          roomKind: room.kind,
+          peerUserId,
+          canDelete: room.kind === RoomKind.group && room.createdById === viewerId,
+        };
+      }),
+    };
+  }
+
   // Tạo nhóm chat
   async createGroup(actorId: string, name: string, memberIds: string[]) {
     const trimmed = name.trim();

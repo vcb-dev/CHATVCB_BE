@@ -39,6 +39,11 @@ export class RoomsController {
     });
   }
 
+  @Get("search")
+  search(@CurrentUser() user: JwtPayload, @Query("q") q?: string) {
+    return this.rooms.search(actorId(user), q);
+  }
+
   @Post("direct")
   direct(@CurrentUser() user: JwtPayload, @Body() dto: CreateDirectRoomDto) {
     return this.rooms.findOrCreateDirect(actorId(user), dto.userId);
