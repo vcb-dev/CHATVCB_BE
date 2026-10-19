@@ -4,15 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { AgentClientService } from "../agent/agent.client.js";
-import { KnowledgeService } from "../agent/knowledge.service.js";
-import { PrismaService } from "../prisma/prisma.service.js";
-import { RoomsService } from "../rooms/rooms.service.js";
-import { AttachmentsService } from "./attachments.service.js";
-import { ChatEvents } from "./chat.events.js";
+import { AgentClientService } from "../../agent/agent.client.js";
+import { KnowledgeService } from "../../agent/knowledge.service.js";
+import { PrismaService } from "../../prisma/prisma.service.js";
+import { RoomsService } from "../../rooms/rooms.service.js";
+import { AttachmentsService } from "../media/attachments.service.js";
+import { ImagesService } from "../media/images.service.js";
+import { imageUrl } from "../media/upload-dir.js";
+import { ChatEvents } from "../realtime/chat.events.js";
 import { REACTION_EMOJIS } from "./dto/react-message.dto.js";
-import { ImagesService } from "./images.service.js";
-import { imageUrl } from "./upload-dir.js";
 
 const AGENT_MENTION = /@agent\b/i;
 

@@ -9,10 +9,10 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
-import { corsOriginDelegate } from '../cors-origins.js';
-import type { JwtPayload } from '../auth/jwt-payload.js';
-import { MeetingsService } from '../meetings/meetings.service.js';
-import { RoomsService } from '../rooms/rooms.service.js';
+import { corsOriginDelegate } from '../../cors-origins.js';
+import type { JwtPayload } from '../../auth/jwt-payload.js';
+import { MeetingsService } from '../../meetings/meetings.service.js';
+import { RoomsService } from '../../rooms/rooms.service.js';
 import { ChatEvents } from './chat.events.js';
 
 @WebSocketGateway({

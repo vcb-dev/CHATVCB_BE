@@ -3,9 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service.js";
-import { RoomsService } from "../rooms/rooms.service.js";
-import { uploadRawBuffer } from "./cloudinary.js";
+import { CloudinaryService } from "../../cloudinary/cloudinary.service.js";
+import { PrismaService } from "../../prisma/prisma.service.js";
+import { RoomsService } from "../../rooms/rooms.service.js";
 
 export const CHAT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -28,6 +28,7 @@ export class AttachmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   async upload(
@@ -61,7 +62,7 @@ export class AttachmentsService {
       },
     });
     try {
-      const uploaded = await uploadRawBuffer(file.buffer, `file-${row.id}`);
+      const uploaded = await this.cloudinary.uploadRawBuffer(file.buffer, `file-${row.id}`);
       const attachment = await this.prisma.chatAttachment.update({
         where: { id: row.id },
         data: {

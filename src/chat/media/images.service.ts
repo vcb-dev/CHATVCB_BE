@@ -8,9 +8,9 @@ import {
 import { createReadStream, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { RoomsService } from '../rooms/rooms.service.js';
-import { uploadAvatarBuffer, uploadImageBuffer } from './cloudinary.js';
+import { CloudinaryService } from '../../cloudinary/cloudinary.service.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import { RoomsService } from '../../rooms/rooms.service.js';
 import { imageUrl, uploadDir } from './upload-dir.js';
 
 const ALLOWED: Record<string, string> = {
@@ -27,6 +27,7 @@ export class ImagesService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   async onModuleInit() {
@@ -64,7 +65,7 @@ export class ImagesService implements OnModuleInit {
       },
     });
     try {
-      const uploaded = await uploadImageBuffer(file.buffer, row.id, file.mimetype);
+      const uploaded = await this.cloudinary.uploadImageBuffer(file.buffer, row.id, file.mimetype);
       const image = await this.prisma.chatImage.update({
         where: { id: row.id },
         data: {
@@ -93,7 +94,7 @@ export class ImagesService implements OnModuleInit {
     if (!ALLOWED[file.mimetype]) {
       throw new BadRequestException('Chỉ nhận ảnh JPG, PNG, GIF, WebP.');
     }
-    const uploaded = await uploadAvatarBuffer(file.buffer, `room-${roomId}`);
+    const uploaded = await this.cloudinary.uploadAvatarBuffer(file.buffer, `room-${roomId}`);
     return this.rooms.updateAvatar(roomId, userId, uploaded.url, team);
   }
 
@@ -222,7 +223,7 @@ export class ImagesService implements OnModuleInit {
         continue;
       }
       const buffer = await readFile(path);
-      const uploaded = await uploadImageBuffer(buffer, row.id, row.mimeType);
+      const uploaded = await this.cloudinary.uploadImageBuffer(buffer, row.id, row.mimeType);
       await this.prisma.chatImage.update({
         where: { id: row.id },
         data: { storedName: uploaded.publicId, url: uploaded.url },

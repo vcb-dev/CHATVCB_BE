@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard.js';
 
 type GifItem = { id: string; url: string; preview: string };
 

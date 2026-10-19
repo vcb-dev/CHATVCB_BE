@@ -12,17 +12,17 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { CurrentUser } from '../auth/current-user.decorator.js';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
-import type { JwtPayload } from '../auth/jwt-payload.js';
-import { UpdateNicknameDto } from '../rooms/dto/update-nickname.dto.js';
-import { UpdateRoomDto } from '../rooms/dto/update-room.dto.js';
-import { RoomsService } from '../rooms/rooms.service.js';
-import { ChatEvents } from './chat.events.js';
-import { MarkReadDto } from './dto/mark-read.dto.js';
+import { CurrentUser } from '../../auth/current-user.decorator.js';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard.js';
+import type { JwtPayload } from '../../auth/jwt-payload.js';
+import { UpdateNicknameDto } from '../../rooms/dto/update-nickname.dto.js';
+import { UpdateRoomDto } from '../../rooms/dto/update-room.dto.js';
+import { RoomsService } from '../../rooms/rooms.service.js';
+import { MarkReadDto } from '../messages/dto/mark-read.dto.js';
+import { MessagesService } from '../messages/messages.service.js';
+import { ChatEvents } from '../realtime/chat.events.js';
 import { AttachmentsService } from './attachments.service.js';
 import { ImagesService } from './images.service.js';
-import { MessagesService } from './messages.service.js';
 
 @Controller('rooms/:roomId')
 @UseGuards(JwtAuthGuard)

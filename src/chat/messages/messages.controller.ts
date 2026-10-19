@@ -9,9 +9,9 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { CurrentUser } from "../auth/current-user.decorator.js";
-import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
-import type { JwtPayload } from "../auth/jwt-payload.js";
+import { CurrentUser } from "../../auth/current-user.decorator.js";
+import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
+import type { JwtPayload } from "../../auth/jwt-payload.js";
 import { CreateMessageDto } from "./dto/create-message.dto.js";
 import { PinMessageDto } from "./dto/pin-message.dto.js";
 import { ReactMessageDto } from "./dto/react-message.dto.js";

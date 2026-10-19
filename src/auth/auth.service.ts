@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { uploadAvatarBuffer } from '../chat/cloudinary.js';
+import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
@@ -32,6 +32,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -158,7 +159,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Không tìm thấy tài khoản');
     }
-    const uploaded = await uploadAvatarBuffer(file.buffer, `user-${user.id}`);
+    const uploaded = await this.cloudinary.uploadAvatarBuffer(file.buffer, `user-${user.id}`);
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { avatarUrl: uploaded.url },
