@@ -53,6 +53,7 @@ export class ChatGateway
     try {
       const payload = this.jwt.verify<JwtPayload>(token);
       client.data.user = payload;
+      this.broadcastOnline();
     } catch {
       this.logger.warn(`Socket ${client.id} rejected`);
       client.disconnect();
@@ -65,6 +66,12 @@ export class ChatGateway
       this.emitPresence(roomId);
     }
     this.leaveMeeting(client);
+    this.broadcastOnline();
+  }
+
+  @SubscribeMessage('presence.get')
+  handlePresenceGet(client: Socket) {
+    client.emit('presence.online', this.onlineUsers());
   }
 
   @SubscribeMessage('join')
@@ -228,6 +235,23 @@ export class ChatGateway
       }
     }
     return peers;
+  }
+
+  // Mọi người đang kết nối (mỗi user một lần, dù mở nhiều tab).
+  private onlineUsers() {
+    const seen = new Map<string, { id: string; name: string; handle: string }>();
+    for (const socket of this.server.sockets.sockets.values()) {
+      const user = socket.data.user as JwtPayload | undefined;
+      if (user) {
+        const handle = user.email?.split('@')[0] ?? '';
+        seen.set(user.sub, { id: user.sub, name: user.name, handle });
+      }
+    }
+    return [...seen.values()];
+  }
+
+  private broadcastOnline() {
+    this.server.emit('presence.online', this.onlineUsers());
   }
 
   private emitPresence(roomId: string) {
