@@ -20,29 +20,44 @@ model User {
   memberships  RoomMember[]
   messages     Message[]
   images       ChatImage[]
+  attachments  ChatAttachment[]
   hostedMeetings Meeting[]            @relation("MeetingHost")
   meetingJoins   MeetingParticipant[]
   mailAccounts   MailAccount[]
   docs           Doc[]
   docStars       DocStar[]
   googleAccount  GoogleAccount?
+  reactions      MessageReaction[]
+
+  createdRooms Room[] @relation("RoomCreator")
 
   @@index([team])
 }
 
+enum RoomKind {
+  direct
+  group
+}
+
 model Room {
-  id        String       @id @default(uuid())
-  slug      String       @unique
-  name      String
-  team      String       @default("sale")
-  agentName String       @default("Agent")
-  avatarUrl String       @default("")
-  createdAt DateTime     @default(now())
-  members   RoomMember[]
-  messages  Message[]
-  images    ChatImage[]
+  id          String       @id @default(uuid())
+  slug        String       @unique
+  name        String
+  kind        RoomKind     @default(group)
+  dmKey       String?      @unique
+  createdById String?
+  team        String       @default("sale")
+  agentName   String       @default("")
+  avatarUrl   String       @default("")
+  createdAt   DateTime     @default(now())
+  createdBy   User?        @relation("RoomCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  members     RoomMember[]
+  messages    Message[]
+  images      ChatImage[]
+  attachments ChatAttachment[]
 
   @@index([team])
+  @@index([kind])
 }
 
 model RoomMember {
@@ -66,6 +81,7 @@ model Message {
   role       String
   content    String
   imageId    String?
+  fileId     String?
   replyToId  String?
   pinnedAt   DateTime?
   recalledAt DateTime?
@@ -73,12 +89,27 @@ model Message {
   room       Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   image      ChatImage?     @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  file       ChatAttachment? @relation(fields: [fileId], references: [id], onDelete: SetNull)
   replyTo    Message?       @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies    Message[]      @relation("MessageReplies")
   hides      MessageHide[]
+  reactions  MessageReaction[]
 
   @@index([roomId, createdAt])
   @@index([roomId, pinnedAt])
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
 }
 
 model MessageHide {
@@ -96,6 +127,23 @@ model ChatImage {
   userId     String
   mimeType   String
   filename   String
+  storedName String
+  url        String    @default("")
+  createdAt  DateTime  @default(now())
+  room       Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   Message[]
+
+  @@index([roomId, createdAt])
+}
+
+model ChatAttachment {
+  id         String    @id @default(uuid())
+  roomId     String
+  userId     String
+  mimeType   String
+  filename   String
+  sizeBytes  Int
   storedName String
   url        String    @default("")
   createdAt  DateTime  @default(now())

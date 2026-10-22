@@ -12,22 +12,24 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { CurrentUser } from '../auth/current-user.decorator.js';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
-import type { JwtPayload } from '../auth/jwt-payload.js';
-import { UpdateNicknameDto } from '../rooms/dto/update-nickname.dto.js';
-import { UpdateRoomDto } from '../rooms/dto/update-room.dto.js';
-import { RoomsService } from '../rooms/rooms.service.js';
-import { ChatEvents } from './chat.events.js';
-import { MarkReadDto } from './dto/mark-read.dto.js';
+import { CurrentUser } from '../../auth/current-user.decorator.js';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard.js';
+import type { JwtPayload } from '../../auth/jwt-payload.js';
+import { UpdateNicknameDto } from '../../rooms/dto/update-nickname.dto.js';
+import { UpdateRoomDto } from '../../rooms/dto/update-room.dto.js';
+import { RoomsService } from '../../rooms/rooms.service.js';
+import { MarkReadDto } from '../messages/dto/mark-read.dto.js';
+import { MessagesService } from '../messages/messages.service.js';
+import { ChatEvents } from '../realtime/chat.events.js';
+import { AttachmentsService } from './attachments.service.js';
 import { ImagesService } from './images.service.js';
-import { MessagesService } from './messages.service.js';
 
 @Controller('rooms/:roomId')
 @UseGuards(JwtAuthGuard)
 export class RoomMediaController {
   constructor(
     private readonly images: ImagesService,
+    private readonly attachments: AttachmentsService,
     private readonly messages: MessagesService,
     private readonly rooms: RoomsService,
     private readonly events: ChatEvents,
@@ -105,6 +107,29 @@ export class RoomMediaController {
       throw new BadRequestException('Chưa chọn ảnh.');
     }
     return this.images.upload(roomId, user.sub, file, user.team);
+  }
+
+  @Get('files')
+  listFiles(@Param('roomId') roomId: string, @CurrentUser() user: JwtPayload) {
+    return this.attachments.list(roomId, user.sub, user.team);
+  }
+
+  @Post('files')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  uploadFile(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Chưa chọn tệp.');
+    }
+    return this.attachments.upload(roomId, user.sub, file, user.team);
   }
 
   @Post('images/remote')

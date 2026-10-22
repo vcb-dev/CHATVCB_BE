@@ -12,5 +12,9 @@ export class CreateMessageDto {
 
   @IsOptional()
   @IsUUID()
+  fileId?: string;
+
+  @IsOptional()
+  @IsUUID()
   replyToId?: string;
 }
