@@ -67,26 +67,43 @@ export class RoomsService {
     return member.nickname?.trim() ?? "";
   }
 
-  private lastMessagePreview(message: {
-    content: string;
-    recalledAt: Date | null;
-    imageId: string | null;
-    fileId: string | null;
-  }): string {
+  private lastMessagePreview(
+    message: {
+      content: string;
+      recalledAt: Date | null;
+      imageId: string | null;
+      fileId: string | null;
+      authorName?: string;
+      userId?: string | null;
+    },
+    viewerId?: string,
+    isDirect = false,
+  ): string {
+    let body = "";
     if (message.recalledAt) {
-      return "Tin nhắn đã được thu hồi";
+      body = "Tin nhắn đã được thu hồi";
+    } else if (message.imageId) {
+      body = "Hình ảnh";
+    } else if (message.fileId) {
+      body = "Tệp đính kèm";
+    } else {
+      const text = message.content.trim();
+      body = text.length <= 120 ? text : `${text.slice(0, 120)}…`;
     }
-    if (message.imageId) {
-      return "Hình ảnh";
+
+    if (!body) {
+      return "";
     }
-    if (message.fileId) {
-      return "Tệp đính kèm";
+
+    if (viewerId && message.userId === viewerId) {
+      return `Bạn: ${body}`;
     }
-    const text = message.content.trim();
-    if (text.length <= 120) {
-      return text;
+
+    if (!isDirect && message.authorName) {
+      return `${message.authorName}: ${body}`;
     }
-    return `${text.slice(0, 120)}…`;
+
+    return body;
   }
   // DM: chỉ phòng đã có tin. Nhóm: thành viên là đủ (kể cả chưa có tin).
   async listForUser(
@@ -135,6 +152,8 @@ export class RoomsService {
           orderBy: { createdAt: "desc" },
           take: 1,
           select: {
+            authorName: true,
+            userId: true,
             content: true,
             recalledAt: true,
             imageId: true,
@@ -214,6 +233,8 @@ export class RoomsService {
         user: { id: string; name: string; avatarUrl: string };
       }[];
       messages: {
+        authorName: string;
+        userId: string | null;
         content: string;
         recalledAt: Date | null;
         imageId: string | null;
@@ -253,12 +274,13 @@ export class RoomsService {
       type,
       kind: room.kind,
       avatarUrl,
-      lastMessagePreview: last ? this.lastMessagePreview(last) : "",
+      lastMessagePreview: last ? this.lastMessagePreview(last, viewerId, isDirect) : "",
       updatedAt: updatedAt.toISOString(),
       canDelete: room.kind === RoomKind.group && room.createdById === viewerId,
       createdById: room.createdById,
       unreadCount,
       peerUserId,
+      memberIds: room.members.map((m) => m.userId),
     };
   }
 
@@ -479,6 +501,8 @@ export class RoomsService {
         orderBy: { createdAt: "desc" as const },
         take: 1,
         select: {
+          authorName: true,
+          userId: true,
           content: true,
           recalledAt: true,
           imageId: true,
